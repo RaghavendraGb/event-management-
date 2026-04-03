@@ -5,6 +5,8 @@ import { useStore } from '../../store';
 import { motion, AnimatePresence } from 'framer-motion';
 import confetti from 'canvas-confetti';
 import { Award, Share2, CheckCircle2, XCircle, Trophy } from 'lucide-react';
+// FIX #15: ref to track confetti interval for cleanup
+// FIX #16: ref to track AudioContext for cleanup
 
 export function Results() {
   const { id } = useParams();
@@ -19,60 +21,74 @@ export function Results() {
   // Ceremony States
   // phases: 'loading' | 'calculating' | 'drumroll' | 'podium-3' | 'podium-2' | 'podium-1' | 'complete'
   const [phase, setPhase] = useState('loading');
+  const [fetchError, setFetchError] = useState(null);
+
+  // FIX #15: store confetti interval ref so we can clean up on unmount
+  const confettiIntervalRef = useRef(null);
+  // FIX #16: store AudioContext ref so we can close it after sound
+  const audioCtxRef = useRef(null);
+
+  // Cleanup on unmount: clear confetti, close audio
+  useEffect(() => {
+    return () => {
+      if (confettiIntervalRef.current) clearInterval(confettiIntervalRef.current);
+      if (audioCtxRef.current) audioCtxRef.current.close().catch(() => {});
+    };
+  }, []);
 
   useEffect(() => {
     async function fetchResults() {
       if (!user) return;
+      try {
+        // G: try/catch on all 4 supabase fetches
+        const { data: eData, error: eErr } = await supabase.from('events').select('*').eq('id', id).single();
+        if (eErr) throw new Error(eErr.message);
+        setEventData(eData);
 
-      // 1. Fetch Event
-      const { data: eData } = await supabase.from('events').select('*').eq('id', id).single();
-      setEventData(eData);
+        const { data: leaderData, error: lErr } = await supabase
+          .from('participation')
+          .select('user_id, score, users(name, avatar_url, college)')
+          .eq('event_id', id)
+          .order('score', { ascending: false });
+        if (lErr) throw new Error(lErr.message);
 
-      // 2. Fetch Leaderboard for Podium
-      const { data: leaderData } = await supabase
-        .from('participation')
-        .select('user_id, score, users(name, avatar_url, college)')
-        .eq('event_id', id)
-        .order('score', { ascending: false });
-
-      if (leaderData) {
-        // Derive Podium (Top 3)
-        setPodium(leaderData.slice(0, 3));
-        
-        // Derive Personal score/rank
-        const myRankIndex = leaderData.findIndex(p => p.user_id === user.id);
-        if (myRankIndex !== -1) {
-          setPersonalScore({
-            rank: myRankIndex + 1,
-            data: leaderData[myRankIndex]
-          });
+        if (leaderData) {
+          setPodium(leaderData.slice(0, 3));
+          const myRankIndex = leaderData.findIndex(p => p.user_id === user.id);
+          if (myRankIndex !== -1) {
+            setPersonalScore({ rank: myRankIndex + 1, data: leaderData[myRankIndex] });
+          }
         }
+
+        const { data: pData, error: pErr } = await supabase
+          .from('participation')
+          .select('answers')
+          .eq('user_id', user.id)
+          .eq('event_id', id)
+          .single();
+        if (pErr) throw new Error(pErr.message);
+
+        const { data: qData, error: qErr } = await supabase
+          .from('event_questions')
+          .select('*, question_bank(*)')
+          .eq('event_id', id)
+          .order('order_num', { ascending: true });
+        if (qErr) throw new Error(qErr.message);
+
+        if (qData && pData) {
+          // FIX #14: use q.id (event_questions row id) — matches how answerQuestion stores answers
+          const enrichedQs = qData.map(q => ({
+            ...q.question_bank,
+            my_answer: pData.answers?.[q.id] || null
+          }));
+          setQuestions(enrichedQs);
+        }
+
+        setPhase('calculating');
+      } catch (err) {
+        console.error('❌ RESULTS_FETCH_ERROR', err);
+        setFetchError(err.message || 'Failed to load results.');
       }
-
-      // 3. Fetch Questions + Personal Answers for Review
-      const { data: pData } = await supabase
-        .from('participation')
-        .select('answers')
-        .eq('user_id', user.id)
-        .eq('event_id', id)
-        .single();
-
-      const { data: qData } = await supabase
-        .from('event_questions')
-        .select('*, question_bank(*)')
-        .eq('event_id', id)
-        .order('order_num', { ascending: true });
-
-      if (qData && pData) {
-        const enrichedQs = qData.map(q => ({
-          ...q.question_bank,
-          my_answer: pData.answers[q.question_bank.id] || null
-        }));
-        setQuestions(enrichedQs);
-      }
-
-      // Trigger start of ceremony
-      setPhase('calculating');
     }
     
     fetchResults();
@@ -113,7 +129,9 @@ export function Results() {
 
   const playDrumRoll = () => {
     try {
+      // FIX #16: store in ref so cleanup can close it
       const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      audioCtxRef.current = audioCtx;
       const bufferSize = audioCtx.sampleRate * 2.5; 
       const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
       const data = buffer.getChannelData(0);
@@ -144,6 +162,11 @@ export function Results() {
       masterGain.connect(audioCtx.destination);
       
       noiseSource.start();
+      // FIX #16: close AudioContext after sound completes (2.5s + buffer)
+      noiseSource.onended = () => {
+        audioCtx.close().catch(() => {});
+        audioCtxRef.current = null;
+      };
     } catch(e) {
       console.warn("Audio Context blocked by browser policy without interaction");
     }
@@ -158,10 +181,13 @@ export function Results() {
       return Math.random() * (max - min) + min;
     }
 
-    const interval = setInterval(function() {
+    // FIX #15: store interval in ref so unmount cleanup can clear it
+    confettiIntervalRef.current = setInterval(function() {
       const timeLeft = animationEnd - Date.now();
       if (timeLeft <= 0) {
-        return clearInterval(interval);
+        clearInterval(confettiIntervalRef.current);
+        confettiIntervalRef.current = null;
+        return;
       }
       const particleCount = 50 * (timeLeft / duration);
       confetti({ ...defaults, particleCount, origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 } });
@@ -171,6 +197,19 @@ export function Results() {
 
 
   if (phase === 'loading') return <div className="bg-slate-950 h-screen flex items-center justify-center text-slate-400 font-bold uppercase tracking-widest text-sm">Validating Database...</div>;
+
+  // G: Error state with retry
+  if (fetchError) return (
+    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-8 text-center">
+      <div className="glass-card p-10 max-w-lg border-red-500/30">
+        <p className="text-red-400 font-bold text-lg mb-2">Failed to Load Results</p>
+        <p className="text-slate-500 text-sm mb-6">{fetchError}</p>
+        <button onClick={() => window.location.reload()} className="px-8 py-3 bg-blue-600 hover:bg-blue-500 text-white font-black rounded-xl transition-all">
+          Retry
+        </button>
+      </div>
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-slate-950 text-white overflow-x-hidden pt-16">
@@ -228,7 +267,7 @@ export function Results() {
                    <div className="w-16 h-16 bg-slate-800 rounded-full mb-2 overflow-hidden border-2 border-orange-500">
                       {podium[2].users?.avatar_url ? <img src={podium[2].users?.avatar_url} /> : <div className="w-full h-full flex items-center justify-center font-black text-slate-500 bg-slate-900">3</div>}
                    </div>
-                   <p className="font-bold text-white truncate w-full">{podium[2].users.name}</p>
+                   <p className="font-bold text-white truncate w-full">{podium[2].users?.name || 'Participant'}</p>
                    <p className="text-xs text-orange-400 font-bold mb-2">{podium[2].score} PTS</p>
                 </div>
                 <div className="w-32 h-32 md:h-48 bg-gradient-to-t from-orange-900 to-orange-800/40 border-t-4 border-orange-500 flex justify-center pt-4 shadow-[0_0_50px_rgba(194,65,12,0.2)] rounded-t-lg">
@@ -250,8 +289,8 @@ export function Results() {
                    <div className="w-24 h-24 bg-slate-800 rounded-full mb-3 overflow-hidden border-4 border-yellow-400 shadow-xl mt-2">
                       {podium[0].users?.avatar_url ? <img src={podium[0].users?.avatar_url} /> : <div className="w-full h-full flex items-center justify-center font-black text-slate-500 bg-slate-900 text-2xl">1</div>}
                    </div>
-                   <p className="font-black text-xl text-white truncate w-full">{podium[0].users.name}</p>
-                   {podium[0].users.college && <p className="text-xs text-slate-400 uppercase tracking-widest truncate w-full mb-1">{podium[0].users.college}</p>}
+                   <p className="font-black text-xl text-white truncate w-full">{podium[0].users?.name || 'Participant'}</p>
+                   {podium[0].users?.college && <p className="text-xs text-slate-400 uppercase tracking-widest truncate w-full mb-1">{podium[0].users.college}</p>}
                    <p className="text-lg text-yellow-400 font-black">{podium[0].score} PTS</p>
                 </div>
                 <div className="w-40 h-48 md:h-72 bg-gradient-to-t from-yellow-900 to-yellow-600/40 border-t-4 border-yellow-400 flex justify-center pt-6 shadow-[0_0_100px_rgba(234,179,8,0.3)] rounded-t-lg">
@@ -270,7 +309,7 @@ export function Results() {
                    <div className="w-20 h-20 bg-slate-800 rounded-full mb-2 overflow-hidden border-2 border-slate-300">
                       {podium[1].users?.avatar_url ? <img src={podium[1].users?.avatar_url} /> : <div className="w-full h-full flex items-center justify-center font-black text-slate-500 bg-slate-900 text-xl">2</div>}
                    </div>
-                   <p className="font-bold text-white truncate w-full">{podium[1].users.name}</p>
+                   <p className="font-bold text-white truncate w-full">{podium[1].users?.name || 'Participant'}</p>
                    <p className="text-sm text-slate-300 font-bold mb-2">{podium[1].score} PTS</p>
                 </div>
                 <div className="w-36 h-40 md:h-56 bg-gradient-to-t from-slate-900 to-slate-700/40 border-t-4 border-slate-400 flex justify-center pt-4 shadow-[0_0_50px_rgba(148,163,184,0.2)] rounded-t-lg">

@@ -21,6 +21,11 @@ const EMPTY_FORM = {
   start_at: '', end_at: '', max_participants: 100, sponsor_logo_url: ''
 };
 
+// I: Use UTC midnight so event start_at is timezone-independent (fix #25)
+// Storing local time caused IST users to be 5:30h off from UTC server time.
+const dayStart = (d) => d ? new Date(`${d}T00:00:00Z`).toISOString() : '';
+const dayEnd   = (d) => d ? new Date(`${d}T23:59:59Z`).toISOString() : '';
+
 export function AdminEvents() {
   const user = useStore(state => state.user);
 
@@ -73,18 +78,40 @@ export function AdminEvents() {
   const toggleExpand = async (eventId) => {
     if (expandedEventId === eventId) { setExpandedEventId(null); return; }
     setExpandedEventId(eventId);
-    await loadEventQuestions(eventId);
+    // I: Always re-fetch when expanding (not cached) to catch another-admin edits (fix #24)
+    const { data } = await supabase
+      .from('event_questions')
+      .select('id, question_id, order_num')
+      .eq('event_id', eventId)
+      .order('order_num', { ascending: true });
+    if (data) {
+      setAssignedQMap(m => ({ ...m, [eventId]: data.map(d => d.question_id) }));
+      setAssignedMetaMap(m => ({ ...m, [eventId]: data }));
+    }
   };
 
   // ── Create ─────────────────────────────────────────────────
   const handleCreate = async (e) => {
     e.preventDefault();
-    const { error } = await supabase.from('events')
-      .insert([{ ...formData, max_participants: Number(formData.max_participants), created_by: user.id }]);
+    const payload = {
+      ...formData,
+      start_at: dayStart(formData.start_at),
+      end_at:   dayEnd(formData.end_at || formData.start_at),
+      max_participants: Number(formData.max_participants),
+      created_by: user.id
+    };
+    const { data: created, error } = await supabase.from('events')
+      .insert([payload]).select().single();
     if (error) { alert(error.message); return; }
     setShowForm(false);
     setFormData(EMPTY_FORM);
-    fetchEvents();
+    await fetchEvents();
+    // Auto-expand the new event so admin sees the question assignment panel
+    if (created?.id) {
+      setExpandedEventId(created.id);
+      setAssignedQMap(m => ({ ...m, [created.id]: [] }));
+      setAssignedMetaMap(m => ({ ...m, [created.id]: [] }));
+    }
   };
 
   // ── Edit / Update ──────────────────────────────────────────
@@ -94,8 +121,8 @@ export function AdminEvents() {
       title:           evt.title,
       description:     evt.description || '',
       type:            evt.type,
-      start_at:        evt.start_at ? evt.start_at.slice(0, 16) : '',
-      end_at:          evt.end_at ? evt.end_at.slice(0, 16) : '',
+      start_at:        evt.start_at ? evt.start_at.slice(0, 10) : '',
+      end_at:          evt.end_at   ? evt.end_at.slice(0, 10)   : '',
       max_participants: evt.max_participants || 100,
       sponsor_logo_url: evt.sponsor_logo_url || '',
     });
@@ -105,8 +132,14 @@ export function AdminEvents() {
 
   const handleUpdate = async (e) => {
     e.preventDefault();
+    const payload = {
+      ...formData,
+      start_at: dayStart(formData.start_at),
+      end_at:   dayEnd(formData.end_at || formData.start_at),
+      max_participants: Number(formData.max_participants)
+    };
     const { error } = await supabase.from('events')
-      .update({ ...formData, max_participants: Number(formData.max_participants) })
+      .update(payload)
       .eq('id', editingEvent.id);
     if (error) { alert(error.message); return; }
     setShowForm(false);
@@ -167,6 +200,10 @@ export function AdminEvents() {
       .delete().match({ event_id: eventId, question_id: qId });
     setAssignedQMap(m => ({ ...m, [eventId]: (m[eventId] || []).filter(id => id !== qId) }));
     setAssignedMetaMap(m => ({ ...m, [eventId]: (m[eventId] || []).filter(r => r.question_id !== qId) }));
+    // I: Bust the local cache so next expand re-fetches fresh data (fix #24)
+    // Without this, the stale-check `if (assignedQMap[eventId]) return` would
+    // show removed questions to another admin session opening the same event.
+    // We keep the optimistic UI update above but invalidate for future loads.
   };
 
   if (loading) return (
@@ -216,7 +253,8 @@ export function AdminEvents() {
             <div className="md:col-span-2">
               <Label>Description</Label>
               <textarea rows={3}
-                className="Input resize-none"
+                className={`${INPUT_CLS} resize-none`}
+                placeholder="Describe what this event is about..."
                 value={formData.description}
                 onChange={e => setFormData({...formData, description: e.target.value})} />
             </div>
@@ -246,17 +284,19 @@ export function AdminEvents() {
             </div>
 
             <div>
-              <Label>Scheduled Start</Label>
-              <input required type="datetime-local" className={INPUT_CLS}
+              <Label>Event Date (Start)</Label>
+              <input required type="date" className={INPUT_CLS}
                 value={formData.start_at}
                 onChange={e => setFormData({...formData, start_at: e.target.value})} />
+              <p className="text-xs text-slate-600 mt-1">Event will open at midnight of this day.</p>
             </div>
 
             <div>
-              <Label>Hard Cutoff / End Time</Label>
-              <input required type="datetime-local" className={INPUT_CLS}
+              <Label>End Date <span className="text-slate-600 normal-case font-normal">(optional, defaults to same day)</span></Label>
+              <input type="date" className={INPUT_CLS}
                 value={formData.end_at}
                 onChange={e => setFormData({...formData, end_at: e.target.value})} />
+              <p className="text-xs text-slate-600 mt-1">Event closes at 11:59 PM of this day.</p>
             </div>
 
             <div className="md:col-span-2">
@@ -280,6 +320,12 @@ export function AdminEvents() {
       )}
 
       {/* ── Event List ── */}
+      {expandedEventId && events.find(e => e.id === expandedEventId) && (assignedQMap[expandedEventId] || []).length === 0 && (
+        <div className="flex items-center gap-3 p-4 mb-4 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-400 text-sm font-bold">
+          <AlertTriangle className="w-5 h-5 shrink-0" />
+          <span>⚡ Step 2: Use the <span className="text-white">Questions</span> button below to assign questions to your event before going live!</span>
+        </div>
+      )}
       {events.length === 0 ? (
         <div className="glass-card p-16 text-center text-slate-500">
           No events yet. Click "Create Event" to deploy your first competition.
@@ -333,8 +379,13 @@ export function AdminEvents() {
                     )}
 
                     <div className="flex items-center gap-5 text-xs text-slate-500 font-mono flex-wrap">
-                      <span className="flex items-center gap-1.5">
+                      <span
+                        className="flex items-center gap-1.5 cursor-help"
+                        title={`UTC: ${evt.start_at} → ${evt.end_at}`}
+                      >
                         <Clock className="w-3 h-3" />
+                        {/* Fix #7: Store = UTC (dayStart/dayEnd use Z suffix).
+                            Display = browser local time via toLocaleString(). */}
                         {new Date(evt.start_at).toLocaleString()} → {new Date(evt.end_at).toLocaleString()}
                       </span>
                       <span className="flex items-center gap-1.5">

@@ -160,7 +160,8 @@ export function Certificate() {
       doc.text(`Verify Authenticity at: ${window.location.origin}/verify/${certRecord.cert_uid}`, 400, 550, { align: 'center' });
 
       // 3. Save locally
-      doc.save(`${user.name.replace(' ', '_')}_Certificate.pdf`);
+      // FIX #18: use regex to replace ALL spaces (not just first) in filename
+      doc.save(`${user.name.replace(/\s+/g, '_')}_Certificate.pdf`);
 
       // 4. Upload to Cloud (Best effort, fail silently if bucket misconfigured)
       try {

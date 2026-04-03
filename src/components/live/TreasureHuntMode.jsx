@@ -1,21 +1,30 @@
 import { useState, useEffect, useRef } from 'react';
-import { Map, AlertCircle, Key } from 'lucide-react';
+import { Map, AlertCircle, Key, AlertTriangle } from 'lucide-react';
 
 export function TreasureHuntMode({ questions, answers, answerQuestion, onSubmit, isSubmitting }) {
+  // FIX #10: ALL hooks defined before any conditional return
   const [level, setLevel] = useState(0);
   const [wrongTries, setWrongTries] = useState(0);
   const [selectedOption, setSelectedOption] = useState('');
   const autoAdvanceRef = useRef(null);
-  
+  // FIX #11: isMounted ref to guard async callbacks after unmount
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => { isMountedRef.current = false; };
+  }, []);
+
   // Restore level from saved answers
   useEffect(() => {
+    if (!questions || questions.length === 0) return;
     let solved = 0;
     for (const q of questions) {
-      if (answers[q.id] === q.question_bank.correct_answer) {
+      if (q.question_bank && answers[q.id] === q.question_bank.correct_answer) {
         solved++;
       }
     }
-    setLevel(solved);
+    if (isMountedRef.current) setLevel(solved);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -23,12 +32,16 @@ export function TreasureHuntMode({ questions, answers, answerQuestion, onSubmit,
   useEffect(() => {
     if (wrongTries >= 3) {
       autoAdvanceRef.current = setTimeout(() => {
+        if (!isMountedRef.current) return; // FIX #11: guard unmount
         setWrongTries(0);
         setSelectedOption('');
         setLevel(l => {
           const next = l + 1;
-          if (next >= questions.length) {
-            onSubmit();
+          if (next >= (questions?.length || 0)) {
+            // FIX #11: defer onSubmit to avoid calling during state updater
+            setTimeout(() => {
+              if (isMountedRef.current) onSubmit();
+            }, 0);
           }
           return next;
         });
@@ -37,12 +50,23 @@ export function TreasureHuntMode({ questions, answers, answerQuestion, onSubmit,
     return () => {
       if (autoAdvanceRef.current) clearTimeout(autoAdvanceRef.current);
     };
-  }, [wrongTries, questions.length, onSubmit]);
+  }, [wrongTries, questions, onSubmit]);
+
+  // FIX #10: Guard moved below all hooks
+  if (!questions || questions.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-6 p-10 text-center">
+        <AlertTriangle className="w-16 h-16 text-amber-500 animate-pulse" />
+        <h2 className="text-2xl font-black text-white uppercase tracking-widest">No Questions Yet</h2>
+        <p className="text-slate-400 max-w-md">The admin hasn't assigned any questions to this event.</p>
+      </div>
+    );
+  }
 
   const currentQ = questions[level];
 
   const handleCheck = () => {
-    if (!selectedOption) return;
+    if (!selectedOption || !currentQ?.question_bank) return;
 
     if (selectedOption === currentQ.question_bank.correct_answer) {
       // Correct!
@@ -51,7 +75,9 @@ export function TreasureHuntMode({ questions, answers, answerQuestion, onSubmit,
       setSelectedOption('');
       
       if (level + 1 >= questions.length) {
-        onSubmit();
+        setTimeout(() => {
+          if (isMountedRef.current) onSubmit();
+        }, 0);
       } else {
         setLevel(l => l + 1);
       }
@@ -61,7 +87,9 @@ export function TreasureHuntMode({ questions, answers, answerQuestion, onSubmit,
     }
   };
 
-  if (!currentQ) return <div className="text-center p-20 text-white font-bold text-2xl animate-pulse">You discovered all secrets! Saving...</div>;
+  if (!currentQ || !currentQ.question_bank) {
+    return <div className="text-center p-20 text-white font-bold text-2xl animate-pulse">You discovered all secrets! Saving...</div>;
+  }
 
   return (
     <div className="max-w-3xl mx-auto py-10 px-4">
@@ -109,7 +137,7 @@ export function TreasureHuntMode({ questions, answers, answerQuestion, onSubmit,
           <p className="text-slate-400 text-sm mb-4">Choose your path carefully (Tries: {wrongTries}/3)</p>
           
           <div className="grid grid-cols-1 gap-3">
-            {currentQ.question_bank.options.map((opt, i) => (
+            {(currentQ.question_bank.options || []).map((opt, i) => (
               <label 
                 key={i} 
                 className={`flex items-center gap-4 p-4 rounded-xl border cursor-pointer transition-all ${

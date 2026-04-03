@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useStore } from '../../store';
@@ -23,6 +23,13 @@ export function Lobby() {
   // Realtime Data
   const [liveCount, setLiveCount] = useState(0);
   const [timeLeft, setTimeLeft] = useState('');
+
+  // FIX #22: isMounted guard prevents stale navigate calls after unmount
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => { isMountedRef.current = false; };
+  }, []);
 
   useEffect(() => {
     async function loadData() {
@@ -61,7 +68,7 @@ export function Lobby() {
         .limit(20);
         
       if (parts) {
-        setParticipants(parts.map(p => p.users));
+        setParticipants(parts.map(p => p.users).filter(Boolean));
         setTotalJoined(count || parts.length);
       }
 
@@ -81,18 +88,27 @@ export function Lobby() {
   useEffect(() => {
     if (!user || loading) return;
 
+    // FIX #22: Hold ref to fallbackPoller so realtime handler can clear it immediately
+    let fallbackPoller = null;
+
     // 1. Setup Status Subscription / Fallback Polling
     const statusChannel = supabase.channel(`event-${id}-updates`)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'events', filter: `id=eq.${id}` }, (payload) => {
         if (payload.new.status === 'live') {
-          navigate(`/live/${id}`);
+          // FIX #22: clear poller BEFORE navigating to prevent stale .then() callbacks
+          if (fallbackPoller) {
+            clearInterval(fallbackPoller);
+            fallbackPoller = null;
+          }
+          if (isMountedRef.current) navigate(`/live/${id}`);
         }
       })
       .subscribe();
 
-    const fallbackPoller = setInterval(async () => {
+    fallbackPoller = setInterval(async () => {
       const { data } = await supabase.from('events').select('status').eq('id', id).single();
-      if (data && data.status === 'live') {
+      if (data && data.status === 'live' && isMountedRef.current) {
+        if (fallbackPoller) clearInterval(fallbackPoller);
         navigate(`/live/${id}`);
       }
     }, 5000);
@@ -104,7 +120,7 @@ export function Lobby() {
 
     room.on('presence', { event: 'sync' }, () => {
       const state = room.presenceState();
-      setLiveCount(Object.keys(state).length);
+      if (isMountedRef.current) setLiveCount(Object.keys(state).length);
     }).subscribe(async (status) => {
       if (status === 'SUBSCRIBED') {
         await room.track({ online_at: new Date().toISOString() });
@@ -114,7 +130,7 @@ export function Lobby() {
     return () => {
       supabase.removeChannel(statusChannel);
       supabase.removeChannel(room);
-      clearInterval(fallbackPoller);
+      if (fallbackPoller) clearInterval(fallbackPoller);
     };
   }, [id, user, loading, navigate]);
 
@@ -216,14 +232,14 @@ export function Lobby() {
               <div className="flex flex-wrap gap-2">
                 {participants.map((u, i) => (
                   <div key={i} className="w-10 h-10 rounded-full bg-slate-800 border-2 border-slate-700 flex items-center justify-center overflow-hidden shrink-0 group relative cursor-pointer hover:border-blue-500 transition-colors">
-                    {u.avatar_url ? (
+                    {u?.avatar_url ? (
                       <img src={u.avatar_url} alt={u.name} className="w-full h-full object-cover" />
                     ) : (
-                      <span className="text-xs font-bold text-slate-400 uppercase">{u.name?.charAt(0)}</span>
+                      <span className="text-xs font-bold text-slate-400 uppercase">{u?.name?.charAt(0)}</span>
                     )}
                     {/* Tooltip */}
                     <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-slate-800 text-xs text-white rounded opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none transition-opacity">
-                      {u.name}
+                      {u?.name || 'Participant'}
                     </div>
                   </div>
                 ))}
@@ -243,7 +259,8 @@ export function Lobby() {
                       <div key={t.id} className="flex justify-between items-center bg-slate-900/50 p-3 rounded-lg border border-white/5">
                         <span className="text-sm font-bold text-slate-200">{t.name}</span>
                         <span className="text-xs font-medium bg-slate-800 px-2 py-1 rounded text-purple-300">
-                          {t.team_members[0]?.count || 1} Members
+                          {/* FIX #23: cosmetic fix — show 0 when team_members is empty, not misleading 1 */}
+                          {(Array.isArray(t.team_members) && t.team_members[0]?.count) || 0} Members
                         </span>
                       </div>
                     ))}

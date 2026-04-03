@@ -1,11 +1,40 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { AlertTriangle } from 'lucide-react';
 
 export function NormalQuizMode({ questions, answers, answerQuestion, onSubmit, isSubmitting }) {
   const isReadyToSubmit = Object.keys(answers).length > 0;
 
+  // F: Internal submit lock — prevents double-click between state re-renders
+  const submitLockedRef = useRef(false);
+
+  // Reset lock when isSubmitting resets (e.g. on unmount/retry)
+  useEffect(() => {
+    if (!isSubmitting) submitLockedRef.current = false;
+  }, [isSubmitting]);
+
+  const handleSubmit = () => {
+    // F: Ref-based lock catches clicks that slip in before React re-render
+    if (submitLockedRef.current || isSubmitting) return;
+    submitLockedRef.current = true;
+    onSubmit();
+  };
+
+  // Guard: no questions assigned
+  if (!questions || questions.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-6 p-10 text-center">
+        <AlertTriangle className="w-16 h-16 text-amber-500 animate-pulse" />
+        <h2 className="text-2xl font-black text-white uppercase tracking-widest">No Questions Yet</h2>
+        <p className="text-slate-400 max-w-md">The admin hasn't assigned any questions to this event. Please wait or contact the organizer.</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="max-w-4xl mx-auto space-y-8 pb-32">
+    <div className="max-w-4xl mx-auto space-y-8 pb-32 pt-8 px-4">
       {questions.map((q, index) => {
+        if (!q.question_bank) return null;
+
         const selectedOption = answers[q.id];
         return (
           <div key={q.id} className="glass-card p-8">
@@ -13,11 +42,11 @@ export function NormalQuizMode({ questions, answers, answerQuestion, onSubmit, i
               <div className="w-10 h-10 shrink-0 bg-blue-600 rounded-full flex items-center justify-center font-bold text-lg">
                 {index + 1}
               </div>
-              <h2 className="text-xl font-medium text-white pt-1">{q.question_bank.question}</h2>
+              <h2 className="text-xl font-medium text-white pt-1">{q.question_bank?.question}</h2>
             </div>
 
             <div className="space-y-3 pl-14">
-              {q.question_bank.options.map((opt, i) => (
+              {(q.question_bank?.options || []).map((opt, i) => (
                 <label 
                   key={i} 
                   onClick={() => answerQuestion(q.id, opt)}
@@ -45,9 +74,10 @@ export function NormalQuizMode({ questions, answers, answerQuestion, onSubmit, i
           <div className="text-slate-400 font-medium">
             Answered: <span className="text-white font-bold">{Object.keys(answers).length}</span> / {questions.length}
           </div>
+          {/* F: onClick uses handleSubmit with ref-lock, disabled still applies for UX */}
           <button 
-            disabled={!isReadyToSubmit || isSubmitting}
-            onClick={onSubmit}
+            disabled={!isReadyToSubmit || isSubmitting || submitLockedRef.current}
+            onClick={handleSubmit}
             className="px-8 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-black rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_15px_rgba(16,185,129,0.4)] disabled:shadow-none"
           >
             {isSubmitting ? 'Submitting...' : 'Submit Quiz'}

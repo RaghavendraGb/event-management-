@@ -26,7 +26,8 @@ CREATE TYPE user_role AS ENUM ('user', 'admin');
 CREATE TYPE event_type AS ENUM ('quiz', 'rapid_fire', 'treasure_hunt');
 CREATE TYPE event_status AS ENUM ('upcoming', 'live', 'ended');
 CREATE TYPE difficulty_level AS ENUM ('easy', 'medium', 'hard');
-CREATE TYPE participation_status AS ENUM ('registered', 'active', 'submitted');
+CREATE TYPE participation_status AS ENUM ('registered', 'active', 'submitted', 'completed');
+CREATE TYPE user_status AS ENUM ('pending', 'approved', 'blocked');
 CREATE TYPE cert_type AS ENUM ('participation', 'winner');
 
 -- ==========================================
@@ -40,6 +41,7 @@ CREATE TABLE users (
   email TEXT NOT NULL UNIQUE,
   avatar_url TEXT,
   role user_role DEFAULT 'user',
+  status user_status DEFAULT 'pending',
   college TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );

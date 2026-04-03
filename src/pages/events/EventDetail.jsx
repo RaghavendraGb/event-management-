@@ -147,7 +147,7 @@ export function EventDetail() {
             <div className="pb-1">
               {isRegistered ? (
                 <button 
-                  onClick={() => navigate(`/lobby/${event.id}`)}
+                  onClick={() => navigate(isLive ? `/live/${event.id}` : `/lobby/${event.id}`)}
                   className="px-8 py-3.5 bg-white text-slate-900 hover:bg-slate-200 font-extrabold rounded-xl shadow-[0_0_30px_rgba(255,255,255,0.3)] hover:scale-105 transition-all text-center flex items-center gap-2"
                 >
                   {isLive ? 'Enter Live Event' : 'View Ticket / Lobby'} <ArrowRight className="w-5 h-5"/>

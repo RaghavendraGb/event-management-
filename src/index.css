@@ -10,14 +10,49 @@
   --color-accent: #8b5cf6;
 }
 
+/* ── Base / Reset ────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%; /* Stop iOS from scaling text */
+  text-size-adjust: 100%;
+}
+
 body {
   background-color: var(--color-background);
   color: var(--color-text);
   font-family: 'Inter', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
+  /* Prevent horizontal overflow on mobile */
+  overflow-x: hidden;
+  min-height: 100dvh;
+  /* Respects safe areas on notched phones (iOS/Android) */
+  padding: env(safe-area-inset-top, 0) env(safe-area-inset-right, 0) env(safe-area-inset-bottom, 0) env(safe-area-inset-left, 0);
 }
 
-/* Glassmorphism utilities */
+/* Prevent images and media from overflowing containers */
+img, video, iframe, canvas, svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Global word-break helpers — prevent long strings from overflowing */
+h1, h2, h3, h4, h5, h6 {
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+
+/* Global table overflow prevention */
+table {
+  display: block;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  width: 100%;
+}
+
+/* ── Glassmorphism utilities ─────────────────────────────── */
 .glass {
   background: rgba(30, 41, 59, 0.7);
   backdrop-filter: blur(10px);
@@ -28,12 +63,15 @@ body {
 .glass-card {
   background: rgba(30, 41, 59, 0.6);
   backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 1rem;
   box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+  /* Never let glass cards overflow their parent */
+  min-width: 0;
 }
 
-/* Custom scrollbar — used in LiveLeaderboard, Lobby teams, Results review */
+/* ── Custom scrollbar ────────────────────────────────────── */
 .custom-scrollbar::-webkit-scrollbar {
   width: 4px;
 }
@@ -48,7 +86,7 @@ body {
   background: rgba(148, 163, 184, 0.4);
 }
 
-/* Lobby main card ambient pulse animation */
+/* ── Ambient pulse animation (Lobby) ─────────────────────── */
 @keyframes pulse-bg-anim {
   0%, 100% { opacity: 0.05; }
   50%       { opacity: 0.12; }
@@ -57,3 +95,85 @@ body {
   animation: pulse-bg-anim 4s ease-in-out infinite;
 }
 
+/* ── Safe-area spacing utilities (notched phones) ────────── */
+.pb-safe {
+  padding-bottom: max(1.25rem, env(safe-area-inset-bottom));
+}
+.pt-safe {
+  padding-top: max(0rem, env(safe-area-inset-top));
+}
+
+/* ── Mobile bottom-nav spacing helper ───────────────────── */
+/* When the sidebar converts to bottom-nav (< lg), add bottom padding to main */
+@media (max-width: 1023px) {
+  .main-content-area {
+    padding-bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/* ── Responsive Typography Scale ────────────────────────── */
+/* Fluid hero headings: shrink gracefully on small screens */
+.text-hero {
+  font-size: clamp(2rem, 6vw, 3.75rem);
+  line-height: 1.1;
+  font-weight: 800;
+}
+
+.text-section {
+  font-size: clamp(1.25rem, 3.5vw, 2rem);
+  line-height: 1.25;
+  font-weight: 700;
+}
+
+/* ── Truncate helpers ────────────────────────────────────── */
+.truncate-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ── Card grid responsive helpers ───────────────────────── */
+.card-grid {
+  display: grid;
+  gap: 1.25rem;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 640px) {
+  .card-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (min-width: 1024px) {
+  .card-grid { grid-template-columns: repeat(3, 1fr); }
+}
+
+/* ── Input sizing — comfortable on touch ───────────────── */
+input, select, textarea, button {
+  min-height: 2.75rem; /* 44px — minimum touch target */
+  font-size: 16px; /* Prevents iOS zoom-on-focus */
+}
+
+/* ── Bottom navigation (mobile) ─────────────────────────── */
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: calc(3.75rem + env(safe-area-inset-bottom, 0px));
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  background: rgba(15, 23, 42, 0.95);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-around;
+  z-index: 55;
+}
+
+/* Only show bottom-nav on mobile, hide on desktop */
+@media (min-width: 1024px) {
+  .bottom-nav { display: none; }
+}

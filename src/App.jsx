@@ -1,12 +1,10 @@
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AppLayout } from './components/layout/AppLayout';
 import { ProtectedRoute } from './components/layout/ProtectedRoute';
-import { supabase } from './lib/supabase';
+import { supabase, initClockOffset } from './lib/supabase';
 import { useStore } from './store';
 import { WifiOff } from 'lucide-react';
-import { useState } from 'react';
-
 // Pages
 import { Home } from './pages/Home';
 import { Login } from './pages/Login';
@@ -30,24 +28,43 @@ import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { AdminEvents } from './pages/admin/AdminEvents';
 import { AdminQuestions } from './pages/admin/AdminQuestions';
 import { AdminParticipants } from './pages/admin/AdminParticipants';
+import { AdminUsers } from './pages/admin/AdminUsers';
 
 function App() {
   const { setUser, setAuthLoading } = useStore();
 
+  // FIX #28: generation counter — each auth event gets a unique id.
+  // fetchProfile checks at the end if it's still the current request,
+  // preventing a stale SIGNED_OUT from overwriting a fresh SIGNED_IN.
+  const fetchGenRef = useRef(0);
+
   const fetchProfile = async (sessionUser) => {
+    const myGen = ++fetchGenRef.current;
+
     if (!sessionUser) {
-      setUser(null);
-      setAuthLoading(false);
+      if (fetchGenRef.current === myGen) {
+        setUser(null);
+        setAuthLoading(false);
+      }
       return;
     }
-    // Fetch the enriched profile from the public.users table (contains role, college, etc)
     const { data: profile } = await supabase
       .from('users')
       .select('*')
       .eq('id', sessionUser.id)
       .single();
-      
-    // Set user as the DB profile (or fallback to auth user if missing)
+
+    // Abort if a newer auth event has already fired
+    if (fetchGenRef.current !== myGen) return;
+
+    // J: Block pending-approval AND rejected users from accessing the app
+    if (profile?.status === 'pending' || profile?.status === 'rejected') {
+      await supabase.auth.signOut();
+      setUser(null);
+      setAuthLoading(false);
+      return;
+    }
+
     setUser(profile || { id: sessionUser.id, role: 'user', email: sessionUser.email });
     setAuthLoading(false);
   };
@@ -55,6 +72,9 @@ function App() {
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
 
   useEffect(() => {
+    // Fix #1: Sync clock offset once so all timers compensate for client drift
+    initClockOffset();
+
     // 1. Check active session on load
     supabase.auth.getSession().then(({ data: { session } }) => {
       fetchProfile(session?.user);
@@ -112,6 +132,7 @@ function App() {
             <Route path="/admin/events" element={<AdminEvents />} />
             <Route path="/admin/questions" element={<AdminQuestions />} />
             <Route path="/admin/participants" element={<AdminParticipants />} />
+            <Route path="/admin/users" element={<AdminUsers />} />
           </Route>
           
           {/* Fallback */}

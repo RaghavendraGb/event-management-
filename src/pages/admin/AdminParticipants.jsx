@@ -15,6 +15,8 @@ export function AdminParticipants() {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
+  // FIX #19: mirror scannerOpen state in a ref so the rAF tick closure reads current value
+  const scannerOpenRef = useRef(false);
 
   useEffect(() => {
     supabase.from('events').select('id, title').then(({data}) => {
@@ -23,6 +25,15 @@ export function AdminParticipants() {
         if (data.length > 0) setSelectedEventId(data[0].id);
       }
     });
+  }, []);
+
+  // FIX #20: cleanup camera stream on component unmount
+  useEffect(() => {
+    return () => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(t => t.stop());
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -44,9 +55,10 @@ export function AdminParticipants() {
     if (participations.length === 0) return alert("Nothing to export");
     const formatted = participations.map(p => ({
       ID: p.id,
-      Name: p.users.name,
-      Email: p.users.email,
-      College: p.users.college || 'N/A',
+      // FIX #21: null-safe — p.users might be null for deleted users
+      Name: p.users?.name ?? 'Unknown',
+      Email: p.users?.email ?? 'Unknown',
+      College: p.users?.college || 'N/A',
       Team: p.teams?.name || 'Solo',
       Score: p.score,
       AntiCheat_Violations: p.violations,
@@ -69,10 +81,14 @@ export function AdminParticipants() {
     if (scannerOpen) {
       // Stop
       if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
+      // FIX #19: update ref alongside state
+      scannerOpenRef.current = false;
       setScannerOpen(false);
       setScanResult(null);
     } else {
       // Start
+      // FIX #19: update ref alongside state
+      scannerOpenRef.current = true;
       setScannerOpen(true);
       setScanResult(null);
       try {
@@ -84,6 +100,7 @@ export function AdminParticipants() {
         requestAnimationFrame(tick);
       } catch(e) {
         alert("Camera forbidden or not found");
+        scannerOpenRef.current = false;
         setScannerOpen(false);
       }
     }
@@ -103,11 +120,14 @@ export function AdminParticipants() {
       if (code) {
         verifyQR(code.data);
         if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
+        // FIX #19: update ref before state to stop rAF loop immediately
+        scannerOpenRef.current = false;
         setScannerOpen(false);
         return;
       }
     }
-    if (scannerOpen) requestAnimationFrame(tick);
+    // FIX #19: read from ref (not stale state closure) to decide if loop continues
+    if (scannerOpenRef.current) requestAnimationFrame(tick);
   };
 
   const verifyQR = (qrData) => {
