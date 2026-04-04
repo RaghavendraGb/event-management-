@@ -31,6 +31,26 @@ import { AdminQuestions } from './pages/admin/AdminQuestions';
 import { AdminParticipants } from './pages/admin/AdminParticipants';
 import { AdminUsers } from './pages/admin/AdminUsers';
 
+// ECE Hub Pages — Student
+import { EceHub } from './pages/ece/EceHub';
+import { EceTopic } from './pages/ece/EceTopic';
+import { EceGallery } from './pages/ece/EceGallery';
+import { EceNotices } from './pages/ece/EceNotices';
+import { EceChat } from './pages/ece/EceChat';
+import { EceDoubts } from './pages/ece/EceDoubts';
+import { EceOrganisation } from './pages/ece/EceOrganisation';
+
+// ECE Hub Pages — Admin
+import { AdminEceDashboard } from './pages/admin/ece/AdminEceDashboard';
+import { AdminEceTopics } from './pages/admin/ece/AdminEceTopics';
+import { AdminEceResources } from './pages/admin/ece/AdminEceResources';
+import { AdminEceGallery } from './pages/admin/ece/AdminEceGallery';
+import { AdminEceNotices } from './pages/admin/ece/AdminEceNotices';
+import { AdminEceDoubts } from './pages/admin/ece/AdminEceDoubts';
+import { AdminEceChat } from './pages/admin/ece/AdminEceChat';
+import { AdminEceQuotes } from './pages/admin/ece/AdminEceQuotes';
+import { AdminEceOrganisation } from './pages/admin/ece/AdminEceOrganisation';
+
 function App() {
   const { setUser, setAuthLoading } = useStore();
   const networkStatus = useStore((state) => state.networkStatus);
@@ -128,6 +148,32 @@ function App() {
             <Route path="/admin/questions" element={<AdminQuestions />} />
             <Route path="/admin/participants" element={<AdminParticipants />} />
             <Route path="/admin/users" element={<AdminUsers />} />
+          </Route>
+
+          {/* ECE Hub — Public Routes */}
+          <Route path="/ece" element={<EceHub />} />
+          <Route path="/ece/topic/:id" element={<EceTopic />} />
+          <Route path="/ece/gallery" element={<EceGallery />} />
+          <Route path="/ece/notices" element={<EceNotices />} />
+          <Route path="/ece/organisation" element={<EceOrganisation />} />
+
+          {/* ECE Hub — Auth Required Routes */}
+          <Route element={<ProtectedRoute />}>
+            <Route path="/ece/chat" element={<EceChat />} />
+            <Route path="/ece/doubts" element={<EceDoubts />} />
+          </Route>
+
+          {/* ECE Hub — Admin Routes */}
+          <Route element={<ProtectedRoute requireAdmin />}>
+            <Route path="/admin/ece" element={<AdminEceDashboard />} />
+            <Route path="/admin/ece/topics" element={<AdminEceTopics />} />
+            <Route path="/admin/ece/resources" element={<AdminEceResources />} />
+            <Route path="/admin/ece/gallery" element={<AdminEceGallery />} />
+            <Route path="/admin/ece/notices" element={<AdminEceNotices />} />
+            <Route path="/admin/ece/doubts" element={<AdminEceDoubts />} />
+            <Route path="/admin/ece/chat" element={<AdminEceChat />} />
+            <Route path="/admin/ece/quotes" element={<AdminEceQuotes />} />
+            <Route path="/admin/ece/organisation" element={<AdminEceOrganisation />} />
           </Route>
           
           {/* Fallback */}
