@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useStore } from '../../store';
 import jsPDF from 'jspdf';
-import { DownloadCloud, ShieldCheck, Award } from 'lucide-react';
+import { DownloadCloud, ShieldCheck, Award, Link2, Share2, Check } from 'lucide-react';
 
 export function Certificate() {
   const { id } = useParams();
@@ -13,6 +13,8 @@ export function Certificate() {
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [existingCert, setExistingCert] = useState(null);
+  // Feature 7
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     async function init() {
@@ -245,6 +247,35 @@ export function Certificate() {
             <div className="bg-slate-900 border border-slate-800 p-4 rounded-lg shrink-0 w-full md:w-auto text-center">
                <p className="text-[10px] uppercase font-black text-slate-500 tracking-[0.2em] mb-1">Your Certificate ID</p>
                <p className="font-mono text-emerald-400 text-sm tracking-wider">{existingCert.cert_uid.split('-').pop()}</p>
+
+               {/* Feature 7: Copy Link + Share */}
+               <div className="flex gap-2 mt-3 justify-center">
+                 <button
+                   onClick={async () => {
+                     await navigator.clipboard.writeText(
+                       `${window.location.origin}/verify/${existingCert.cert_uid}`
+                     );
+                     setCopied(true);
+                     setTimeout(() => setCopied(false), 2000);
+                   }}
+                   className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-bold transition-colors border border-slate-700"
+                 >
+                   {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Link2 className="w-3.5 h-3.5" />}
+                   {copied ? 'Copied!' : 'Copy Link'}
+                 </button>
+                 {typeof navigator.share === 'function' && (
+                   <button
+                     onClick={() => navigator.share({
+                       title: `My EventX Certificate — ${data?.event?.title}`,
+                       text: `Check out my verified certificate from ${data?.event?.title}!`,
+                       url: `${window.location.origin}/verify/${existingCert.cert_uid}`,
+                     })}
+                     className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold transition-colors"
+                   >
+                     <Share2 className="w-3.5 h-3.5" /> Share
+                   </button>
+                 )}
+               </div>
             </div>
           )}
         </div>

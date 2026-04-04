@@ -1,12 +1,17 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Trophy, Users, User } from 'lucide-react';
+import { Trophy, Users, User, Radio, Clock } from 'lucide-react';
 
 export function LiveLeaderboard({ eventId, currentUserId, limit = 10, isProjector = false }) {
   const [entries, setEntries] = useState([]);
   const [tab, setTab] = useState('solo');
   const [teamsEnabled, setTeamsEnabled] = useState(false);
+  // Feature 6: stable mode — 'live' updates instantly; 'stable' snapshots every 2s
+  const [mode, setMode] = useState(isProjector ? 'stable' : 'live');
+  const stableSnapshotRef = useRef([]);   // last stable snapshot
+  const [stableEntries, setStableEntries] = useState([]); // displayed in stable mode
+  const stableIntervalRef = useRef(null);
 
   // Fix #4: throttle timer ref — batches rapid score updates into one re-render
   const updateThrottleRef = useRef(null);
@@ -118,16 +123,46 @@ export function LiveLeaderboard({ eventId, currentUserId, limit = 10, isProjecto
     };
   }, [eventId, fetchBoard]);
 
+  // Feature 6: Stable mode — maintain a snapshot that refreshes every 2 seconds
+  useEffect(() => {
+    // Always keep latest entries in the snapshot ref
+    stableSnapshotRef.current = entries;
+  }, [entries]);
+
+  useEffect(() => {
+    if (mode === 'stable') {
+      // Immediately show current data as initial snapshot
+      setStableEntries(stableSnapshotRef.current);
+      stableIntervalRef.current = setInterval(() => {
+        setStableEntries([...stableSnapshotRef.current]);
+      }, 2000);
+    } else {
+      // Live mode: clear stable interval
+      if (stableIntervalRef.current) {
+        clearInterval(stableIntervalRef.current);
+        stableIntervalRef.current = null;
+      }
+    }
+    return () => {
+      if (stableIntervalRef.current) {
+        clearInterval(stableIntervalRef.current);
+        stableIntervalRef.current = null;
+      }
+    };
+  }, [mode]);
+
   // E: Memoize sorted/filtered list — prevents re-sort on every parent render
+  // Feature 6: use stableEntries in stable mode, live entries otherwise
+  const activeEntries = mode === 'stable' ? stableEntries : entries;
   const renderList = useMemo(() => {
     if (tab === 'solo') {
-      return [...entries]
+      return [...activeEntries]
         .sort((a, b) => b.score - a.score)
         .slice(0, limit)
         .map((e, i) => ({ ...e, rank: i + 1 }));
     }
     const teamMap = {};
-    entries.forEach(e => {
+    activeEntries.forEach(e => {
       if (!e.team_id) return;
       if (!teamMap[e.team_id]) {
         teamMap[e.team_id] = {
@@ -146,28 +181,49 @@ export function LiveLeaderboard({ eventId, currentUserId, limit = 10, isProjecto
       .sort((a, b) => b.score - a.score)
       .slice(0, limit)
       .map((t, i) => ({ ...t, rank: i + 1 }));
-  }, [entries, tab, limit]);
+  }, [activeEntries, tab, limit, mode]);
 
   return (
     <div className={`flex flex-col h-full w-full ${isProjector ? 'p-8' : 'p-4'}`}>
       
       {/* Header Tabs */}
-      <div className="flex justify-between items-center mb-6 border-b border-white/10 pb-4">
+      <div className="flex justify-between items-center mb-6 border-b border-white/10 pb-4 gap-2 flex-wrap">
         <h2 className={`${isProjector ? 'text-4xl' : 'text-xl'} font-black text-white flex items-center gap-2 tracking-widest uppercase`}>
           <Trophy className={`${isProjector ? 'w-8 h-8' : 'w-5 h-5'} text-amber-400`} /> 
           Top {limit}
         </h2>
-        
-        {teamsEnabled && (
+
+        <div className="flex items-center gap-2">
+          {/* Feature 6: Live / Stable mode toggle */}
           <div className="flex bg-slate-950 p-1 rounded-lg border border-slate-800">
-            <button onClick={() => setTab('solo')} className={`px-3 py-1 text-xs font-bold rounded flex items-center gap-1 transition-all ${tab === 'solo' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>
-              <User className="w-4 h-4"/> Solo
+            <button
+              onClick={() => setMode('live')}
+              className={`px-3 py-1 text-xs font-bold rounded flex items-center gap-1 transition-all ${mode === 'live' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
+            >
+              <Radio className="w-3 h-3" />
+              {mode === 'live' && <span className="relative flex h-1.5 w-1.5"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" /><span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-white" /></span>}
+              Live
             </button>
-            <button onClick={() => setTab('team')} className={`px-3 py-1 text-xs font-bold rounded flex items-center gap-1 transition-all ${tab === 'team' ? 'bg-purple-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>
-              <Users className="w-4 h-4"/> Teams
+            <button
+              onClick={() => setMode('stable')}
+              className={`px-3 py-1 text-xs font-bold rounded flex items-center gap-1 transition-all ${mode === 'stable' ? 'bg-slate-700 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
+            >
+              <Clock className="w-3 h-3" />
+              Stable
             </button>
           </div>
-        )}
+
+          {teamsEnabled && (
+            <div className="flex bg-slate-950 p-1 rounded-lg border border-slate-800">
+              <button onClick={() => setTab('solo')} className={`px-3 py-1 text-xs font-bold rounded flex items-center gap-1 transition-all ${tab === 'solo' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>
+                <User className="w-4 h-4"/>Solo
+              </button>
+              <button onClick={() => setTab('team')} className={`px-3 py-1 text-xs font-bold rounded flex items-center gap-1 transition-all ${tab === 'team' ? 'bg-purple-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>
+                <Users className="w-4 h-4"/>Teams
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Roster */}

@@ -4,8 +4,10 @@ import { useStore } from '../../store';
 import {
   CalendarClock, Play, Square, Plus, Pencil,
   Trash2, X, Check, ListChecks, Users, Clock,
-  ChevronDown, ChevronUp, AlertTriangle, RotateCcw
+  ChevronDown, ChevronUp, AlertTriangle, RotateCcw,
+  ShieldAlert, SkipForward, Activity, Trophy, Megaphone
 } from 'lucide-react';
+import { AdminStatusPanel } from '../../components/live/AdminStatusPanel';
 
 const INPUT_CLS = "w-full bg-slate-900 border border-white/10 rounded-lg p-3 text-white focus:outline-none focus:border-blue-500 transition-colors";
 
@@ -18,11 +20,11 @@ const TYPE_COLORS = {
 
 const EMPTY_FORM = {
   title: '', description: '', type: 'quiz',
-  start_at: '', end_at: '', max_participants: 100, sponsor_logo_url: ''
+  start_at: '', end_at: '', max_participants: 100, sponsor_logo_url: '',
+  question_count: ''  // Feature 12: UI-only, not sent to DB
 };
 
 // I: Use UTC midnight so event start_at is timezone-independent (fix #25)
-// Storing local time caused IST users to be 5:30h off from UTC server time.
 const dayStart = (d) => d ? new Date(`${d}T00:00:00Z`).toISOString() : '';
 const dayEnd   = (d) => d ? new Date(`${d}T23:59:59Z`).toISOString() : '';
 
@@ -33,13 +35,25 @@ export function AdminEvents() {
   const [questions, setQuestions]       = useState([]);
   const [loading, setLoading]           = useState(true);
   const [showForm, setShowForm]         = useState(false);
-  const [editingEvent, setEditingEvent] = useState(null); // event object | null
+  const [editingEvent, setEditingEvent] = useState(null);
   const [formData, setFormData]         = useState(EMPTY_FORM);
 
   // Per-event question assignment panel
   const [expandedEventId, setExpandedEventId]  = useState(null);
-  const [assignedQMap, setAssignedQMap]        = useState({}); // { eventId: [questionId,...] }
-  const [assignedMetaMap, setAssignedMetaMap]  = useState({}); // { eventId: [{ id, question_id, order_num },...] }
+  const [assignedQMap, setAssignedQMap]        = useState({});
+  const [assignedMetaMap, setAssignedMetaMap]  = useState({});
+
+  // Feature 12: guided selection state per event
+  // { [eventId]: { active: bool, target: number, currentStep: number } }
+  const [guidedState, setGuidedState] = useState({});
+
+  // Feature 10: Go Live / End Event confirmation modal
+  // null | { eventId, action: 'live' | 'ended', title, participantCount, questionCount }
+  const [confirmModal, setConfirmModal] = useState(null);
+  const [confirmInput, setConfirmInput] = useState('');
+
+  // Feature 3: Admin status panel expanded event
+  const [statusPanelEventId, setStatusPanelEventId] = useState(null);
 
   // ── Fetch ──────────────────────────────────────────────────
   const fetchEvents = useCallback(async () => {
@@ -62,23 +76,10 @@ export function AdminEvents() {
   useEffect(() => { fetchEvents(); fetchQuestions(); }, [fetchEvents, fetchQuestions]);
 
   // Load event questions when expanding
-  const loadEventQuestions = async (eventId) => {
-    if (assignedQMap[eventId]) return; // already cached
-    const { data } = await supabase
-      .from('event_questions')
-      .select('id, question_id, order_num')
-      .eq('event_id', eventId)
-      .order('order_num', { ascending: true });
-    if (data) {
-      setAssignedQMap(m => ({ ...m, [eventId]: data.map(d => d.question_id) }));
-      setAssignedMetaMap(m => ({ ...m, [eventId]: data }));
-    }
-  };
-
   const toggleExpand = async (eventId) => {
     if (expandedEventId === eventId) { setExpandedEventId(null); return; }
     setExpandedEventId(eventId);
-    // I: Always re-fetch when expanding (not cached) to catch another-admin edits (fix #24)
+    // Always re-fetch when expanding to catch another-admin edits (fix #24)
     const { data } = await supabase
       .from('event_questions')
       .select('id, question_id, order_num')
@@ -93,8 +94,9 @@ export function AdminEvents() {
   // ── Create ─────────────────────────────────────────────────
   const handleCreate = async (e) => {
     e.preventDefault();
+    const { question_count, ...rest } = formData; // strip UI-only field
     const payload = {
-      ...formData,
+      ...rest,
       start_at: dayStart(formData.start_at),
       end_at:   dayEnd(formData.end_at || formData.start_at),
       max_participants: Number(formData.max_participants),
@@ -106,11 +108,18 @@ export function AdminEvents() {
     setShowForm(false);
     setFormData(EMPTY_FORM);
     await fetchEvents();
-    // Auto-expand the new event so admin sees the question assignment panel
+    // Feature 12: Auto-expand + enter guided selection if question_count was set
     if (created?.id) {
       setExpandedEventId(created.id);
       setAssignedQMap(m => ({ ...m, [created.id]: [] }));
       setAssignedMetaMap(m => ({ ...m, [created.id]: [] }));
+      const targetCount = parseInt(question_count, 10);
+      if (targetCount > 0) {
+        setGuidedState(s => ({
+          ...s,
+          [created.id]: { active: true, target: targetCount, currentStep: 1 }
+        }));
+      }
     }
   };
 
@@ -125,6 +134,7 @@ export function AdminEvents() {
       end_at:          evt.end_at   ? evt.end_at.slice(0, 10)   : '',
       max_participants: evt.max_participants || 100,
       sponsor_logo_url: evt.sponsor_logo_url || '',
+      question_count:  '',
     });
     setShowForm(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -132,8 +142,9 @@ export function AdminEvents() {
 
   const handleUpdate = async (e) => {
     e.preventDefault();
+    const { question_count, ...rest } = formData;
     const payload = {
-      ...formData,
+      ...rest,
       start_at: dayStart(formData.start_at),
       end_at:   dayEnd(formData.end_at || formData.start_at),
       max_participants: Number(formData.max_participants)
@@ -154,11 +165,36 @@ export function AdminEvents() {
     setFormData(EMPTY_FORM);
   };
 
-  // ── Status Control ─────────────────────────────────────────
-  const setStatus = async (id, status) => {
+  // ── Feature 10: Status Control with confirmation guard ──────
+  const initiateStatusChange = (evt, status) => {
+    const participantCount = evt.participation?.[0]?.count || 0;
+    const questionCount = assignedQMap[evt.id]?.length ?? '?';
+    setConfirmModal({
+      eventId: evt.id,
+      action: status,
+      title: evt.title,
+      participantCount,
+      questionCount,
+    });
+    setConfirmInput('');
+  };
+
+  const confirmStatusChange = async () => {
+    if (!confirmModal || confirmInput !== 'CONFIRM') return;
+    const { eventId, action } = confirmModal;
+    const updates = { status: action };
+    if (action === 'live')  updates.start_at = new Date().toISOString();
+    if (action === 'ended') updates.end_at   = new Date().toISOString();
+    const { error } = await supabase.from('events').update(updates).eq('id', eventId);
+    if (!error) fetchEvents();
+    else alert(error.message);
+    setConfirmModal(null);
+    setConfirmInput('');
+  };
+
+  const setStatusDirect = async (id, status) => {
+    // For reset-to-upcoming (less dangerous), no guard needed
     const updates = { status };
-    if (status === 'live')  updates.start_at = new Date().toISOString();
-    if (status === 'ended') updates.end_at   = new Date().toISOString();
     const { error } = await supabase.from('events').update(updates).eq('id', id);
     if (!error) fetchEvents();
     else alert(error.message);
@@ -171,19 +207,17 @@ export function AdminEvents() {
     fetchEvents();
   };
 
-  // ── Question Assignment (per event panel) ──────────────────
+  // ── Question Assignment ────────────────────────────────────
   const toggleQuestion = async (eventId, qId) => {
     const current = assignedQMap[eventId] || [];
     const meta    = assignedMetaMap[eventId] || [];
 
     if (current.includes(qId)) {
-      // Remove
       await supabase.from('event_questions')
         .delete().match({ event_id: eventId, question_id: qId });
       setAssignedQMap(m => ({ ...m, [eventId]: current.filter(id => id !== qId) }));
       setAssignedMetaMap(m => ({ ...m, [eventId]: meta.filter(r => r.question_id !== qId) }));
     } else {
-      // Add
       const nextOrder = current.length + 1;
       const { data } = await supabase.from('event_questions')
         .insert([{ event_id: eventId, question_id: qId, order_num: nextOrder }])
@@ -200,10 +234,54 @@ export function AdminEvents() {
       .delete().match({ event_id: eventId, question_id: qId });
     setAssignedQMap(m => ({ ...m, [eventId]: (m[eventId] || []).filter(id => id !== qId) }));
     setAssignedMetaMap(m => ({ ...m, [eventId]: (m[eventId] || []).filter(r => r.question_id !== qId) }));
-    // I: Bust the local cache so next expand re-fetches fresh data (fix #24)
-    // Without this, the stale-check `if (assignedQMap[eventId]) return` would
-    // show removed questions to another admin session opening the same event.
-    // We keep the optimistic UI update above but invalidate for future loads.
+  };
+
+  // Feature 12: Guided selection actions
+  const guidedAddQuestion = async (eventId, qId) => {
+    await toggleQuestion(eventId, qId);
+    const gs = guidedState[eventId];
+    if (!gs) return;
+    const nextStep = gs.currentStep + 1;
+    if (nextStep > gs.target) {
+      setGuidedState(s => ({ ...s, [eventId]: { ...gs, active: false } }));
+    } else {
+      setGuidedState(s => ({ ...s, [eventId]: { ...gs, currentStep: nextStep } }));
+    }
+  };
+
+  const guidedSkipQuestion = (eventId) => {
+    const gs = guidedState[eventId];
+    if (!gs) return;
+    const nextStep = gs.currentStep + 1;
+    if (nextStep > gs.target) {
+      setGuidedState(s => ({ ...s, [eventId]: { ...gs, active: false } }));
+    } else {
+      setGuidedState(s => ({ ...s, [eventId]: { ...gs, currentStep: nextStep } }));
+    }
+  };
+
+  const exitGuidedMode = (eventId) => {
+    setGuidedState(s => ({ ...s, [eventId]: { ...(s[eventId] || {}), active: false } }));
+  };
+
+  // ── Announce Winner (separate from End Event) ───────────────────────
+  // Sets results_announced = true WITHOUT changing event status.
+  // Participants on waiting screen see the ceremony; event stays live.
+  const [announcing, setAnnouncing] = useState(null); // eventId being announced
+
+  const announceWinner = async (evt) => {
+    if (!window.confirm(`🏆 Announce winner for "${evt.title}"?\n\nThis will show the leaderboard and ceremony to all participants. The event will remain LIVE.`)) return;
+    setAnnouncing(evt.id);
+    const { error } = await supabase
+      .from('events')
+      .update({ results_announced: true })
+      .eq('id', evt.id);
+    if (error) {
+      alert('Failed to announce: ' + error.message);
+    } else {
+      fetchEvents();
+    }
+    setAnnouncing(null);
   };
 
   if (loading) return (
@@ -214,11 +292,88 @@ export function AdminEvents() {
 
   return (
     <div className="p-6 md:p-10 max-w-7xl mx-auto">
+
+      {/* Feature 10: Confirmation Modal */}
+      {confirmModal && (
+        <div className="fixed inset-0 z-[500] bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4">
+          <div className={`bg-slate-900 border rounded-2xl p-6 max-w-md w-full shadow-2xl ${
+            confirmModal.action === 'live' ? 'border-emerald-500/40' : 'border-red-500/40'
+          }`}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
+                confirmModal.action === 'live' ? 'bg-emerald-500/20' : 'bg-red-500/20'
+              }`}>
+                {confirmModal.action === 'live'
+                  ? <Play className="w-5 h-5 text-emerald-400" />
+                  : <Square className="w-5 h-5 text-red-400 fill-red-400" />
+                }
+              </div>
+              <div>
+                <h3 className="font-black text-white text-base">
+                  {confirmModal.action === 'live' ? 'Go Live?' : '🛑 End Event?'}
+                </h3>
+                <p className="text-xs text-slate-400 truncate max-w-[220px]">{confirmModal.title}</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2 mb-4 text-center">
+              <div className="bg-slate-800/60 rounded-lg p-2">
+                <p className="text-sm font-black text-white">{confirmModal.participantCount}</p>
+                <p className="text-[10px] text-slate-500 uppercase tracking-widest">Participants</p>
+              </div>
+              <div className="bg-slate-800/60 rounded-lg p-2">
+                <p className="text-sm font-black text-white">{confirmModal.questionCount}</p>
+                <p className="text-[10px] text-slate-500 uppercase tracking-widest">Questions</p>
+              </div>
+              <div className="bg-slate-800/60 rounded-lg p-2">
+                <p className="text-sm font-black text-white capitalize">{confirmModal.action === 'live' ? 'LIVE' : 'END'}</p>
+                <p className="text-[10px] text-slate-500 uppercase tracking-widest">Action</p>
+              </div>
+            </div>
+
+            {confirmModal.action === 'ended' && (
+              <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg p-3 mb-4">
+                This will immediately submit all active participants and lock the event.
+              </p>
+            )}
+
+            <p className="text-xs text-slate-400 mb-2">Type <span className="font-mono font-black text-white bg-slate-800 px-1.5 py-0.5 rounded">CONFIRM</span> to proceed:</p>
+            <input
+              type="text"
+              value={confirmInput}
+              onChange={e => setConfirmInput(e.target.value)}
+              placeholder="CONFIRM"
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg p-3 text-white font-mono text-sm focus:outline-none focus:border-blue-500 mb-4"
+            />
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setConfirmModal(null); setConfirmInput(''); }}
+                className="flex-1 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold text-sm transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmStatusChange}
+                disabled={confirmInput !== 'CONFIRM'}
+                className={`flex-1 px-4 py-2.5 rounded-xl font-black text-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
+                  confirmModal.action === 'live'
+                    ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                    : 'bg-red-600 hover:bg-red-500 text-white'
+                }`}
+              >
+                {confirmModal.action === 'live' ? '🚀 Go Live' : '🛑 End Event'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex justify-between items-start mb-8">
         <div>
           <h1 className="text-3xl font-black text-white uppercase tracking-widest">Event Master</h1>
-          <p className="text-slate-400 mt-1 text-sm">Create, edit, manage lifecycle & assign questions to events.</p>
+          <p className="text-slate-400 mt-1 text-sm">Create, edit, manage lifecycle &amp; assign questions to events.</p>
         </div>
         <button
           onClick={() => { setEditingEvent(null); setFormData(EMPTY_FORM); setShowForm(f => !f); }}
@@ -269,11 +424,24 @@ export function AdminEvents() {
                 <option value="treasure_hunt">Treasure Hunt</option>
               </select>
               <p className="text-xs text-slate-600 mt-1">
-                {formData.type === 'quiz'         && 'All questions shown at once, submit when ready.'}
+                {formData.type === 'quiz'         && 'One question at a time, submit after review.'}
                 {formData.type === 'rapid_fire'   && 'One question at a time with countdown timer per question.'}
                 {formData.type === 'treasure_hunt'&& 'Sequential — must answer correctly to unlock the next.'}
               </p>
             </div>
+
+            {/* Feature 12: Question count field */}
+            {!editingEvent && (
+              <div>
+                <Label>How Many Questions? <span className="text-slate-600 normal-case font-normal">(guides selection)</span></Label>
+                <input type="number" min={1} max={200}
+                  className={INPUT_CLS}
+                  placeholder="e.g. 10"
+                  value={formData.question_count}
+                  onChange={e => setFormData({...formData, question_count: e.target.value})} />
+                <p className="text-xs text-slate-600 mt-1">Sets the target count for guided question selection after creation.</p>
+              </div>
+            )}
 
             <div>
               <Label>Max Participants</Label>
@@ -288,15 +456,13 @@ export function AdminEvents() {
               <input required type="date" className={INPUT_CLS}
                 value={formData.start_at}
                 onChange={e => setFormData({...formData, start_at: e.target.value})} />
-              <p className="text-xs text-slate-600 mt-1">Event will open at midnight of this day.</p>
             </div>
 
             <div>
-              <Label>End Date <span className="text-slate-600 normal-case font-normal">(optional, defaults to same day)</span></Label>
+              <Label>End Date <span className="text-slate-600 normal-case font-normal">(optional)</span></Label>
               <input type="date" className={INPUT_CLS}
                 value={formData.end_at}
                 onChange={e => setFormData({...formData, end_at: e.target.value})} />
-              <p className="text-xs text-slate-600 mt-1">Event closes at 11:59 PM of this day.</p>
             </div>
 
             <div className="md:col-span-2">
@@ -320,12 +486,6 @@ export function AdminEvents() {
       )}
 
       {/* ── Event List ── */}
-      {expandedEventId && events.find(e => e.id === expandedEventId) && (assignedQMap[expandedEventId] || []).length === 0 && (
-        <div className="flex items-center gap-3 p-4 mb-4 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-400 text-sm font-bold">
-          <AlertTriangle className="w-5 h-5 shrink-0" />
-          <span>⚡ Step 2: Use the <span className="text-white">Questions</span> button below to assign questions to your event before going live!</span>
-        </div>
-      )}
       {events.length === 0 ? (
         <div className="glass-card p-16 text-center text-slate-500">
           No events yet. Click "Create Event" to deploy your first competition.
@@ -337,6 +497,14 @@ export function AdminEvents() {
             const isExpanded       = expandedEventId === evt.id;
             const assigned         = assignedQMap[evt.id] || [];
             const assignedMeta     = assignedMetaMap[evt.id] || [];
+            const guided           = guidedState[evt.id];
+            const isGuidedActive   = guided?.active && isExpanded;
+
+            // Feature 12: pick question at current guided step index
+            // currentStep 1..target maps to unassigned[0..target-1]
+            const unassignedQuestions = questions.filter(q => !assigned.includes(q.id));
+            const guidedQuestionIndex = (guided?.currentStep ?? 1) - 1;
+            const guidedQuestion = unassignedQuestions[guidedQuestionIndex] || unassignedQuestions[0] || null;
 
             return (
               <div key={evt.id}
@@ -379,13 +547,8 @@ export function AdminEvents() {
                     )}
 
                     <div className="flex items-center gap-5 text-xs text-slate-500 font-mono flex-wrap">
-                      <span
-                        className="flex items-center gap-1.5 cursor-help"
-                        title={`UTC: ${evt.start_at} → ${evt.end_at}`}
-                      >
+                      <span className="flex items-center gap-1.5 cursor-help" title={`UTC: ${evt.start_at} → ${evt.end_at}`}>
                         <Clock className="w-3 h-3" />
-                        {/* Fix #7: Store = UTC (dayStart/dayEnd use Z suffix).
-                            Display = browser local time via toLocaleString(). */}
                         {new Date(evt.start_at).toLocaleString()} → {new Date(evt.end_at).toLocaleString()}
                       </span>
                       <span className="flex items-center gap-1.5">
@@ -394,27 +557,51 @@ export function AdminEvents() {
                       </span>
                       <span className="flex items-center gap-1.5">
                         <ListChecks className="w-3 h-3" />
-                        {isExpanded ? (assigned.length) : '?'} questions
+                        {isExpanded ? assigned.length : '?'} questions
                       </span>
                     </div>
                   </div>
 
                   {/* Action Buttons */}
                   <div className="flex items-center gap-2 flex-wrap shrink-0">
-                    {/* Lifecycle */}
+                    {/* Lifecycle — Feature 10: guarded */}
                     {evt.status === 'upcoming' && (
-                      <button onClick={() => setStatus(evt.id, 'live')}
+                      <button onClick={() => initiateStatusChange(evt, 'live')}
                         className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-black uppercase text-xs tracking-widest rounded-lg flex items-center gap-2 shadow-[0_0_12px_rgba(16,185,129,0.3)] transition-all">
                         <Play className="w-3.5 h-3.5" /> Go Live
                       </button>
                     )}
                     {evt.status === 'live' && (
-                      <button onClick={() => setStatus(evt.id, 'ended')}
-                        className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white font-black uppercase text-xs tracking-widest rounded-lg flex items-center gap-2 shadow-[0_0_12px_rgba(220,38,38,0.3)] transition-all">
-                        <Square className="w-3.5 h-3.5 fill-white" /> End Event
-                      </button>
+                      <>
+                        {/* 🏆 Announce Winner — triggers ceremony WITHOUT ending the event */}
+                        <button
+                          onClick={() => announceWinner(evt)}
+                          disabled={announcing === evt.id || evt.results_announced}
+                          className="px-4 py-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed text-slate-950 font-black uppercase text-xs tracking-widest rounded-lg flex items-center gap-2 shadow-[0_0_16px_rgba(245,158,11,0.4)] transition-all"
+                        >
+                          <Trophy className="w-3.5 h-3.5" />
+                          {announcing === evt.id ? 'Announcing...' : evt.results_announced ? 'Announced ✓' : 'Announce Winner'}
+                        </button>
+
+                        {/* 🛑 End Event — fully closes the event */}
+                        <button onClick={() => initiateStatusChange(evt, 'ended')}
+                          className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white font-black uppercase text-xs tracking-widest rounded-lg flex items-center gap-2 shadow-[0_0_12px_rgba(220,38,38,0.3)] transition-all">
+                          <Square className="w-3.5 h-3.5 fill-white" /> End Event
+                        </button>
+
+                        {/* Status Panel toggle */}
+                        <button
+                          onClick={() => setStatusPanelEventId(p => p === evt.id ? null : evt.id)}
+                          className={`px-3 py-2 rounded-lg text-xs font-black uppercase tracking-widest border flex items-center gap-2 transition-all ${
+                            statusPanelEventId === evt.id
+                              ? 'bg-blue-600 text-white border-blue-500'
+                              : 'text-slate-400 border-slate-700 hover:border-blue-500 hover:text-blue-400'
+                          }`}>
+                          <Activity className="w-4 h-4" /> Status
+                        </button>
+                      </>
                     )}
-                    <button onClick={() => setStatus(evt.id, 'upcoming')} title="Reset to Upcoming"
+                    <button onClick={() => setStatusDirect(evt.id, 'upcoming')} title="Reset to Upcoming"
                       className="p-2 text-slate-500 hover:text-amber-400 hover:bg-amber-500/10 rounded-lg transition-all border border-transparent hover:border-amber-500/20">
                       <RotateCcw className="w-4 h-4" />
                     </button>
@@ -442,6 +629,19 @@ export function AdminEvents() {
                   </div>
                 </div>
 
+                {/* Feature 3: Admin Status Panel */}
+                {statusPanelEventId === evt.id && evt.status === 'live' && (
+                  <div className="border-t border-emerald-500/20 bg-slate-950/60 p-5">
+                    <h4 className="text-sm font-black text-emerald-400 uppercase tracking-widest flex items-center gap-2 mb-4">
+                      <Activity className="w-4 h-4" /> Participant Status — Live View
+                    </h4>
+                    <AdminStatusPanel
+                      eventId={evt.id}
+                      totalQuestions={isExpanded ? assigned.length : undefined}
+                    />
+                  </div>
+                )}
+
                 {/* ── Inline Question Assignment Panel ── */}
                 {isExpanded && (
                   <div className="border-t border-white/5 bg-slate-950/40 p-5">
@@ -455,6 +655,69 @@ export function AdminEvents() {
                         Mode: <span className="text-slate-400 font-bold">{TYPE_LABELS[evt.type]}</span>
                       </p>
                     </div>
+
+                    {/* Feature 12: Guided selection mode */}
+                    {isGuidedActive && (
+                      <div className="mb-6 p-4 bg-blue-900/20 border border-blue-500/30 rounded-xl">
+                        <div className="flex items-center justify-between mb-3">
+                          <p className="text-sm font-black text-blue-400">
+                            📋 Guided Selection — Question {guided.currentStep} of {guided.target}
+                          </p>
+                          <button
+                            onClick={() => exitGuidedMode(evt.id)}
+                            className="text-xs text-slate-500 hover:text-white transition-colors font-bold uppercase tracking-widest"
+                          >
+                            Done Selecting
+                          </button>
+                        </div>
+
+                        {/* Progress */}
+                        <div className="flex gap-1 mb-4">
+                          {Array.from({ length: guided.target }, (_, i) => (
+                            <div
+                              key={i}
+                              className={`h-1.5 flex-1 rounded-full ${
+                                i < guided.currentStep - 1
+                                  ? 'bg-blue-500'
+                                  : i === guided.currentStep - 1
+                                  ? 'bg-blue-400 animate-pulse'
+                                  : 'bg-slate-700'
+                              }`}
+                            />
+                          ))}
+                        </div>
+
+                        {guidedQuestion ? (
+                          <div className="bg-slate-900 border border-slate-700 rounded-xl p-4">
+                            <div className="flex items-center gap-3 mb-3">
+                              <span className={`text-[10px] border px-1.5 py-0.5 rounded font-bold uppercase ${
+                                guidedQuestion.difficulty === 'easy' ? 'text-emerald-400 border-emerald-500/30' :
+                                guidedQuestion.difficulty === 'hard' ? 'text-red-400 border-red-500/30' :
+                                'text-amber-400 border-amber-500/30'}`}>
+                                {guidedQuestion.difficulty}
+                              </span>
+                              <p className="text-sm text-white font-medium flex-1">{guidedQuestion.question}</p>
+                            </div>
+                            <div className="flex gap-3">
+                              <button
+                                onClick={() => guidedAddQuestion(evt.id, guidedQuestion.id)}
+                                className="flex-1 py-2 bg-blue-600 hover:bg-blue-500 text-white font-black rounded-lg text-sm transition-colors flex items-center justify-center gap-2"
+                              >
+                                <Check className="w-4 h-4" /> Add
+                              </button>
+                              <button
+                                onClick={() => guidedSkipQuestion(evt.id)}
+                                className="flex-1 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-lg text-sm transition-colors flex items-center justify-center gap-2"
+                              >
+                                <SkipForward className="w-4 h-4" /> Skip
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-slate-500 text-sm text-center py-4">No more questions available in the bank.</p>
+                        )}
+                      </div>
+                    )}
 
                     {/* Assigned list */}
                     {assigned.length > 0 && (
@@ -482,40 +745,42 @@ export function AdminEvents() {
                       </div>
                     )}
 
-                    {/* All questions selector */}
-                    <div className="max-h-64 overflow-y-auto custom-scrollbar space-y-2 border border-white/5 rounded-xl p-3 bg-slate-900/30">
-                      {questions.length === 0 && (
-                        <p className="text-center text-slate-500 py-6 text-sm">
-                          No questions in bank. Go to the Questions page first to add some.
-                        </p>
-                      )}
-                      {questions.map(q => {
-                        const isAssigned = assigned.includes(q.id);
-                        return (
-                          <div key={q.id} onClick={() => toggleQuestion(evt.id, q.id)}
-                            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all border
-                              ${isAssigned
-                                ? 'bg-purple-900/20 border-purple-500/40'
-                                : 'bg-slate-900 border-transparent hover:border-slate-700'}`}>
-                            <div className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0
-                              ${isAssigned ? 'bg-purple-500 border-purple-400' : 'border-slate-600'}`}>
-                              {isAssigned && <Check className="w-3 h-3 text-white" />}
+                    {/* All questions selector (shown after guided or if no guided) */}
+                    {!isGuidedActive && (
+                      <div className="max-h-64 overflow-y-auto custom-scrollbar space-y-2 border border-white/5 rounded-xl p-3 bg-slate-900/30">
+                        {questions.length === 0 && (
+                          <p className="text-center text-slate-500 py-6 text-sm">
+                            No questions in bank. Go to the Questions page first.
+                          </p>
+                        )}
+                        {questions.map(q => {
+                          const isAssigned = assigned.includes(q.id);
+                          return (
+                            <div key={q.id} onClick={() => toggleQuestion(evt.id, q.id)}
+                              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all border
+                                ${isAssigned
+                                  ? 'bg-purple-900/20 border-purple-500/40'
+                                  : 'bg-slate-900 border-transparent hover:border-slate-700'}`}>
+                              <div className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0
+                                ${isAssigned ? 'bg-purple-500 border-purple-400' : 'border-slate-600'}`}>
+                                {isAssigned && <Check className="w-3 h-3 text-white" />}
+                              </div>
+                              <span className={`text-[10px] border px-1.5 py-0.5 rounded font-bold uppercase shrink-0 ${
+                                q.difficulty === 'easy' ? 'text-emerald-400 border-emerald-500/30' :
+                                q.difficulty === 'hard' ? 'text-red-400 border-red-500/30' :
+                                'text-amber-400 border-amber-500/30'}`}>
+                                {q.difficulty}
+                              </span>
+                              <p className={`text-sm flex-1 truncate font-medium ${isAssigned ? 'text-white' : 'text-slate-400'}`}>
+                                {q.question}
+                              </p>
                             </div>
-                            <span className={`text-[10px] border px-1.5 py-0.5 rounded font-bold uppercase shrink-0 ${
-                              q.difficulty === 'easy' ? 'text-emerald-400 border-emerald-500/30' :
-                              q.difficulty === 'hard' ? 'text-red-400 border-red-500/30' :
-                              'text-amber-400 border-amber-500/30'}`}>
-                              {q.difficulty}
-                            </span>
-                            <p className={`text-sm flex-1 truncate font-medium ${isAssigned ? 'text-white' : 'text-slate-400'}`}>
-                              {q.question}
-                            </p>
-                          </div>
-                        );
-                      })}
-                    </div>
+                          );
+                        })}
+                      </div>
+                    )}
 
-                    {assigned.length === 0 && (
+                    {assigned.length === 0 && !isGuidedActive && (
                       <div className="flex items-center gap-2 mt-3 text-amber-400 text-xs font-bold bg-amber-500/10 border border-amber-500/20 rounded-lg px-4 py-2">
                         <AlertTriangle className="w-4 h-4 shrink-0" />
                         No questions assigned — participants will see an empty quiz!

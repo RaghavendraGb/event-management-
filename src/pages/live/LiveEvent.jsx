@@ -50,6 +50,9 @@ export function LiveEvent() {
   const setLiveEventRuntime = useStore(state => state.setLiveEventRuntime);
   const patchLiveEventRuntime = useStore(state => state.patchLiveEventRuntime);
   const clearLiveEventRuntime = useStore(state => state.clearLiveEventRuntime);
+  // Feature 2: read preloaded questions from Lobby
+  const preloadedQuestions = useStore(state => state.preloadedQuestions);
+  const clearPreloadedQuestions = useStore(state => state.clearPreloadedQuestions);
 
   const [eventData, setEventData] = useState(null);
   const [questions, setQuestions] = useState([]);
@@ -122,22 +125,38 @@ export function LiveEvent() {
         if (isMountedRef.current) setEventData(eData);
 
         // ── A: Populate single source of truth in global store ──
+        // (totalQuestions will be updated after we fetch questions below)
         setLiveEventRuntime({
           eventId: id,
+          eventTitle: eData.title,
           status: eData.status,
           startTime: eData.start_at ? new Date(eData.start_at).getTime() : null,
           endTime: eData.end_at ? new Date(eData.end_at).getTime() : null,
           currentQuestionIndex: 0,
+          totalQuestions: 0,
+          timeLeftStr: '',
           questionStartTime: null,
         });
 
-        const { data: qData, error: qErr } = await supabase
-          .from('event_questions')
-          .select('*, question_bank(*)')
-          .eq('event_id', id)
-          .order('order_num', { ascending: true });
-        if (qErr) console.error('❌ QUESTIONS_ERROR', qErr);
-        if (isMountedRef.current) setQuestions(qData || []);
+        // Feature 2: Use preloaded questions from Lobby if available for this event
+        let qData;
+        if (preloadedQuestions?.eventId === id && preloadedQuestions?.questions?.length > 0) {
+          console.log('✅ USING_PRELOADED_QUESTIONS', preloadedQuestions.questions.length);
+          qData = preloadedQuestions.questions;
+          clearPreloadedQuestions();
+        } else {
+          const { data: fetched, error: qErr } = await supabase
+            .from('event_questions')
+            .select('*, question_bank(*)')
+            .eq('event_id', id)
+            .order('order_num', { ascending: true });
+          if (qErr) console.error('❌ QUESTIONS_ERROR', qErr);
+          qData = fetched || [];
+        }
+
+        if (isMountedRef.current) setQuestions(qData);
+        // Patch totalQuestions now that we have the count
+        patchLiveEventRuntime({ totalQuestions: qData.length });
 
         const { data: pData, error: pErr } = await supabase
           .from('participation')
@@ -406,11 +425,33 @@ export function LiveEvent() {
         const m = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
         const s = Math.floor((distance % (1000 * 60)) / 1000);
         const timeStr = `${h > 0 ? h + ':' : ''}${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-        if (isMountedRef.current) setTimeLeftStr(timeStr);
+        if (isMountedRef.current) {
+          setTimeLeftStr(timeStr);
+          // Feature 1: patch store every second so LiveBanner stays current
+          patchLiveEventRuntime({ timeLeftStr: timeStr });
+        }
       }
     }, 1000);
     return () => clearInterval(interval);
-  }, [eventData, hasStarted, submitEvent]);
+  }, [eventData, hasStarted, submitEvent, patchLiveEventRuntime]);
+
+  // ── Feature 4: Soft lock — beforeunload when event is active ──
+  useEffect(() => {
+    if (!hasStarted || isSubmitting) return;
+    const handleBeforeUnload = (e) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasStarted, isSubmitting]);
+
+  // Feature 1: stable callback for NormalQuizMode to report current question index
+  // MUST be declared here (top-level hook, before all conditional returns)
+  const handleQuestionChange = useCallback(
+    (idx) => patchLiveEventRuntime({ currentQuestionIndex: idx }),
+    [patchLiveEventRuntime]
+  );
 
 
   // ── Render guards ─────────────────────────────────────────────
@@ -521,6 +562,7 @@ export function LiveEvent() {
         answerQuestion={answerQuestion}
         onSubmit={submitEvent}
         isSubmitting={isSubmitting}
+        onQuestionChange={handleQuestionChange}
       />
     );
   };

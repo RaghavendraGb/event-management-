@@ -3,12 +3,13 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useStore } from '../../store';
 import { QRCodeSVG } from 'qrcode.react';
-import { Users, Clock, Radio, Activity } from 'lucide-react';
+import { Users, Clock, Radio, Activity, Bell, BellOff } from 'lucide-react';
 
 export function Lobby() {
   const { id } = useParams();
   const navigate = useNavigate();
   const user = useStore((state) => state.user);
+  const setPreloadedQuestions = useStore((state) => state.setPreloadedQuestions);
   
   // Base Data
   const [ticket, setTicket] = useState(null);
@@ -24,11 +25,23 @@ export function Lobby() {
   const [liveCount, setLiveCount] = useState(0);
   const [timeLeft, setTimeLeft] = useState('');
 
+  // Feature 11: notification state
+  const [notifPermission, setNotifPermission] = useState(
+    typeof Notification !== 'undefined' ? Notification.permission : 'denied'
+  );
+  const notifTimer5Ref = useRef(null);
+  const notifTimerStartRef = useRef(null);
+
   // FIX #22: isMounted guard prevents stale navigate calls after unmount
   const isMountedRef = useRef(true);
   useEffect(() => {
     isMountedRef.current = true;
-    return () => { isMountedRef.current = false; };
+    return () => {
+      isMountedRef.current = false;
+      // Feature 11: clear notification timers on unmount
+      if (notifTimer5Ref.current) clearTimeout(notifTimer5Ref.current);
+      if (notifTimerStartRef.current) clearTimeout(notifTimerStartRef.current);
+    };
   }, []);
 
   useEffect(() => {
@@ -60,6 +73,21 @@ export function Lobby() {
         return;
       }
 
+      // Feature 2: Preload questions into Zustand store while waiting in lobby
+      // This means when the event goes live and we navigate, LiveEvent already has the data
+      if (ticketData.events.status === 'upcoming') {
+        supabase
+          .from('event_questions')
+          .select('*, question_bank(*)')
+          .eq('event_id', id)
+          .order('order_num', { ascending: true })
+          .then(({ data: qData }) => {
+            if (qData && isMountedRef.current) {
+              setPreloadedQuestions({ eventId: id, questions: qData });
+            }
+          });
+      }
+
       // 2. Fetch Aggregated Joined Data
       const { data: parts, count } = await supabase
         .from('participation')
@@ -82,7 +110,51 @@ export function Lobby() {
       setLoading(false);
     }
     loadData();
-  }, [id, user, navigate]);
+  }, [id, user, navigate, setPreloadedQuestions]);
+
+  // Feature 11: Schedule browser notifications for event start
+  useEffect(() => {
+    if (!eventData?.start_at || notifPermission !== 'granted') return;
+
+    const startMs = new Date(eventData.start_at).getTime();
+    const fiveMinBefore = startMs - 5 * 60 * 1000;
+    const now = Date.now();
+
+    // 5-minute warning (only if it's in the future)
+    if (fiveMinBefore > now) {
+      notifTimer5Ref.current = setTimeout(() => {
+        if (document.hidden) {
+          new Notification(`EventX: ${eventData.title} starts in 5 minutes!`, {
+            body: 'Get ready — the competition is about to begin.',
+            icon: '/icon-192x192.png',
+          });
+        }
+      }, fiveMinBefore - now);
+    }
+
+    // At-start notification
+    if (startMs > now) {
+      notifTimerStartRef.current = setTimeout(() => {
+        if (document.hidden) {
+          new Notification(`EventX: ${eventData.title} is LIVE now!`, {
+            body: 'Click to join the competition.',
+            icon: '/icon-192x192.png',
+          });
+        }
+      }, startMs - now);
+    }
+
+    return () => {
+      if (notifTimer5Ref.current) clearTimeout(notifTimer5Ref.current);
+      if (notifTimerStartRef.current) clearTimeout(notifTimerStartRef.current);
+    };
+  }, [eventData, notifPermission]);
+
+  const requestNotification = async () => {
+    if (typeof Notification === 'undefined') return;
+    const result = await Notification.requestPermission();
+    setNotifPermission(result);
+  };
 
   // Realtime Subscriptions
   useEffect(() => {
@@ -167,6 +239,29 @@ export function Lobby() {
         <div className="w-full h-24 mb-6 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center p-4">
           <p className="text-xs text-slate-500 uppercase tracking-widest mr-4">Sponsored By</p>
           <img src={eventData.sponsor_logo_url} alt="Sponsor" className="max-h-12 object-contain grayscale-[0.5] hover:grayscale-0 transition-all opacity-80 hover:opacity-100" />
+        </div>
+      )}
+
+      {/* Feature 11: Notification permission prompt */}
+      {notifPermission !== 'granted' && notifPermission !== 'denied' && (
+        <div className="mb-4 flex items-center gap-3 p-4 bg-blue-500/10 border border-blue-500/25 rounded-xl">
+          <Bell className="w-5 h-5 text-blue-400 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold text-white">Get notified when this event starts</p>
+            <p className="text-xs text-slate-400">We'll notify you 5 minutes before the event begins.</p>
+          </div>
+          <button
+            onClick={requestNotification}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-black uppercase tracking-widest rounded-lg transition-colors shrink-0"
+          >
+            Enable
+          </button>
+        </div>
+      )}
+      {notifPermission === 'granted' && (
+        <div className="mb-4 flex items-center gap-2 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-xs text-emerald-400 font-bold">
+          <Bell className="w-4 h-4 shrink-0" />
+          Notifications enabled — you'll be alerted when this event starts
         </div>
       )}
 

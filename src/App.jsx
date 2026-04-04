@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AppLayout } from './components/layout/AppLayout';
 import { ProtectedRoute } from './components/layout/ProtectedRoute';
 import { supabase, initClockOffset } from './lib/supabase';
 import { useStore } from './store';
+import { useNetworkStatus } from './lib/useNetworkStatus';
 import { WifiOff } from 'lucide-react';
 // Pages
 import { Home } from './pages/Home';
@@ -32,6 +33,10 @@ import { AdminUsers } from './pages/admin/AdminUsers';
 
 function App() {
   const { setUser, setAuthLoading } = useStore();
+  const networkStatus = useStore((state) => state.networkStatus);
+
+  // Feature 5: Wire network intelligence hook (writes to store)
+  useNetworkStatus();
 
   // FIX #28: generation counter — each auth event gets a unique id.
   // fetchProfile checks at the end if it's still the current request,
@@ -69,8 +74,6 @@ function App() {
     setAuthLoading(false);
   };
 
-  const [isOffline, setIsOffline] = useState(!navigator.onLine);
-
   useEffect(() => {
     // Fix #1: Sync clock offset once so all timers compensate for client drift
     initClockOffset();
@@ -91,16 +94,8 @@ function App() {
       }
     );
 
-    // 3. Network Offline tracking for resilient UI
-    const handleOnline = () => setIsOffline(false);
-    const handleOffline = () => setIsOffline(true);
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
     return () => {
       subscription.unsubscribe();
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
     };
   }, [setUser, setAuthLoading]);
 
@@ -140,8 +135,8 @@ function App() {
         </Route>
       </Routes>
 
-      {/* Global Offline PWA Modal */}
-      {isOffline && (
+      {/* Global Offline PWA Modal — only for fully offline state */}
+      {networkStatus === 'offline' && (
         <div className="fixed inset-0 z-[9999] bg-slate-950/90 backdrop-blur-md flex flex-col items-center justify-center text-center p-6 select-none">
            <WifiOff className="w-24 h-24 text-slate-500 mb-6 animate-pulse" />
            <h2 className="text-3xl font-black text-white uppercase tracking-widest mb-2">Connection Lost</h2>

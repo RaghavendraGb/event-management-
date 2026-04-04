@@ -177,3 +177,187 @@ input, select, textarea, button {
 @media (min-width: 1024px) {
   .bottom-nav { display: none; }
 }
+
+/* ── Feature 1: Global Live Event Banner ─────────────────── */
+.live-banner {
+  position: sticky;
+  top: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  padding: 0.5rem 1rem;
+  background: linear-gradient(90deg, rgba(16,185,129,0.15) 0%, rgba(16,185,129,0.08) 100%);
+  border-bottom: 1px solid rgba(16,185,129,0.3);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.live-banner:hover {
+  background: linear-gradient(90deg, rgba(16,185,129,0.22) 0%, rgba(16,185,129,0.12) 100%);
+}
+.live-banner-dot-wrap {
+  position: relative;
+  display: inline-flex;
+  height: 0.75rem;
+  width: 0.75rem;
+  flex-shrink: 0;
+}
+.live-banner-dot-ping {
+  position: absolute;
+  display: inline-flex;
+  height: 100%;
+  width: 100%;
+  border-radius: 9999px;
+  background: #10b981;
+  opacity: 0.75;
+  animation: ping 1s cubic-bezier(0,0,0.2,1) infinite;
+}
+@keyframes ping {
+  75%, 100% { transform: scale(2); opacity: 0; }
+}
+.live-banner-dot {
+  position: relative;
+  display: inline-flex;
+  border-radius: 9999px;
+  height: 0.75rem;
+  width: 0.75rem;
+  background: #10b981;
+}
+.live-banner-title {
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #d1fae5;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.live-banner-q {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #6ee7b7;
+  background: rgba(16,185,129,0.15);
+  border: 1px solid rgba(16,185,129,0.3);
+  padding: 0.15rem 0.5rem;
+  border-radius: 9999px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.live-banner-time {
+  font-size: 0.7rem;
+  font-weight: 700;
+  font-family: monospace;
+  color: #fbbf24;
+  background: rgba(251,191,36,0.1);
+  border: 1px solid rgba(251,191,36,0.25);
+  padding: 0.15rem 0.5rem;
+  border-radius: 9999px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.live-banner-cta {
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #10b981;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* ── Feature 5: Network Status Banners ───────────────────── */
+.network-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 1rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  position: relative;
+  z-index: 190;
+}
+.network-banner--offline {
+  background: rgba(220,38,38,0.15);
+  border-bottom: 1px solid rgba(220,38,38,0.3);
+  color: #fca5a5;
+}
+.network-banner--slow {
+  background: rgba(245,158,11,0.12);
+  border-bottom: 1px solid rgba(245,158,11,0.3);
+  color: #fde68a;
+}
+.network-banner--recovery {
+  background: rgba(16,185,129,0.12);
+  border-bottom: 1px solid rgba(16,185,129,0.3);
+  color: #6ee7b7;
+  animation: recovery-flash 0.5s ease-in-out;
+}
+@keyframes recovery-flash {
+  0% { opacity: 0; transform: translateY(-4px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Feature 13: Quiz Progress Bar ───────────────────────── */
+.quiz-progress-bar {
+  display: flex;
+  gap: 3px;
+  padding: 1rem 1.5rem 0;
+}
+.quiz-progress-segment {
+  height: 4px;
+  border-radius: 2px;
+  flex: 1;
+  background: rgba(255,255,255,0.1);
+  transition: background 0.3s;
+}
+.quiz-progress-segment--answered {
+  background: #10b981;
+}
+.quiz-progress-segment--current {
+  background: #3b82f6;
+  animation: pulse-segment 1.5s ease-in-out infinite;
+}
+@keyframes pulse-segment {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* ── Feature 6: Leaderboard mode toggle button ───────────── */
+.lb-mode-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.65rem;
+  border-radius: 0.4rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  transition: all 0.2s;
+  border: 1px solid transparent;
+}
+.lb-mode-btn--active-live {
+  background: rgba(16,185,129,0.15);
+  color: #10b981;
+  border-color: rgba(16,185,129,0.3);
+}
+.lb-mode-btn--active-stable {
+  background: rgba(59,130,246,0.15);
+  color: #60a5fa;
+  border-color: rgba(59,130,246,0.3);
+}
+.lb-mode-btn--inactive {
+  color: #64748b;
+}
+.lb-mode-btn--inactive:hover {
+  color: #94a3b8;
+  background: rgba(255,255,255,0.04);
+}

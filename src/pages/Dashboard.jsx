@@ -7,7 +7,7 @@ import { Trophy, CalendarDays, Activity, Star } from 'lucide-react';
 export function Dashboard() {
   const user = useStore((state) => state.user);
   const [participations, setParticipations] = useState([]);
-  const [stats, setStats] = useState({ joined: 0, bestScore: 0 });
+  const [stats, setStats] = useState({ joined: 0, bestScore: 0, bestRank: null });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -26,7 +26,27 @@ export function Dashboard() {
       if (data && !error) {
         setParticipations(data);
         const maxScore = data.reduce((max, p) => p.score > max ? p.score : max, 0);
-        setStats({ joined: data.length, bestScore: maxScore });
+
+        // Feature 9: Compute best rank across all submitted events
+        let bestRank = null;
+        const submittedParticipations = data.filter(p => p.status === 'submitted' && p.events?.id);
+        
+        if (submittedParticipations.length > 0) {
+          const rankPromises = submittedParticipations.map(async (p) => {
+            // Count how many participants in the same event scored strictly higher
+            const { count } = await supabase
+              .from('participation')
+              .select('id', { count: 'exact', head: true })
+              .eq('event_id', p.events.id)
+              .gt('score', p.score || 0);
+            return (count || 0) + 1; // rank = number of people above + 1
+          });
+          const ranks = await Promise.all(rankPromises);
+          bestRank = ranks.reduce((best, r) => (r < best ? r : best), Infinity);
+          if (bestRank === Infinity) bestRank = null;
+        }
+
+        setStats({ joined: data.length, bestScore: maxScore, bestRank });
       }
       setLoading(false);
     }
@@ -62,7 +82,7 @@ export function Dashboard() {
           { icon: CalendarDays, label: 'Events Joined',   value: stats.joined,     color: 'border-l-blue-500',    accent: 'bg-blue-500/20 text-blue-400' },
           { icon: Trophy,       label: 'Best Score',      value: stats.bestScore,  color: 'border-l-amber-500',   accent: 'bg-amber-500/20 text-amber-400' },
           { icon: Activity,     label: 'Active Live',     value: participations.filter(p => p.events?.status === 'live').length, color: 'border-l-emerald-500', accent: 'bg-emerald-500/20 text-emerald-400' },
-          { icon: Star,         label: 'Rank',            value: 'N/A',            color: 'border-l-purple-500',  accent: 'bg-purple-500/20 text-purple-400' },
+          { icon: Star,         label: 'Best Rank',       value: stats.bestRank ? `#${stats.bestRank}` : '—',  color: 'border-l-purple-500',  accent: 'bg-purple-500/20 text-purple-400' },
         ].map(({ icon: Icon, label, value, color, accent }) => (
           <div key={label} className={`glass-card p-4 sm:p-6 flex items-center gap-3 border-l-4 ${color} min-w-0`}>
             <div className={`w-9 h-9 sm:w-12 sm:h-12 rounded-full ${accent} flex items-center justify-center shrink-0`}>

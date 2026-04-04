@@ -15,9 +15,8 @@ export const useStore = create((set) => ({
 
   // ── Live Event Runtime (Single Source of Truth) ───────────────
   // Populated by LiveEvent on boot; cleared on unmount.
-  // All components (Lobby, LiveEvent, LiveLeaderboard) can read from here
-  // to avoid distributed state. Shape:
-  //   { eventId, status, startTime, endTime, currentQuestionIndex, questionStartTime }
+  // Shape: { eventId, eventTitle, status, startTime, endTime,
+  //          currentQuestionIndex, totalQuestions, questionStartTime, timeLeftStr }
   liveEventRuntime: null,
   setLiveEventRuntime: (runtime) => set({ liveEventRuntime: runtime }),
   patchLiveEventRuntime: (patch) =>
@@ -27,4 +26,16 @@ export const useStore = create((set) => ({
         : patch,
     })),
   clearLiveEventRuntime: () => set({ liveEventRuntime: null }),
+
+  // ── Preloaded Questions (Feature 2) ───────────────────────────
+  // Set by Lobby before event starts; consumed & cleared by LiveEvent on boot.
+  // Shape: { eventId: string, questions: array }
+  preloadedQuestions: null,
+  setPreloadedQuestions: (data) => set({ preloadedQuestions: data }),
+  clearPreloadedQuestions: () => set({ preloadedQuestions: null }),
+
+  // ── Network Status (Feature 5) ────────────────────────────────
+  // 'online' | 'slow' | 'offline' | 'recovery'
+  networkStatus: 'online',
+  setNetworkStatus: (status) => set({ networkStatus: status }),
 }));

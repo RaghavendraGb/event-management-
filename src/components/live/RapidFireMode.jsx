@@ -48,13 +48,21 @@ export function RapidFireMode({ questions, answers, answerQuestion, onSubmit, is
   useEffect(() => {
     if (!questions || questions.length === 0) return;
 
+    // Map valid question IDs for this event
+    const validQIds = new Set(questions.map(q => q.id));
+
+    // Count how many questions have answers using THIS event's question IDs
     let firstUnanswered = 0;
-    while (firstUnanswered < questions.length && answers[questions[firstUnanswered]?.id]) {
+    while (
+      firstUnanswered < questions.length &&
+      validQIds.has(questions[firstUnanswered]?.id) &&
+      answers[questions[firstUnanswered]?.id]
+    ) {
       firstUnanswered++;
     }
+
     if (firstUnanswered < questions.length) {
       const limit = questions[firstUnanswered].time_limit_seconds || 15;
-      // Fix #2: check namespaced key
       const restored = getRestoredTimeLeft(firstUnanswered, limit);
       setCurrentIndex(firstUnanswered);
       setTimeLeft(restored > 0 ? restored : limit);
@@ -62,8 +70,13 @@ export function RapidFireMode({ questions, answers, answerQuestion, onSubmit, is
         persistQuestionStart(firstUnanswered);
       }
     } else {
-      // FIX #8: All answered — defer submit past render cycle
-      setTimeout(() => onSubmit(), 0);
+      // All questions in THIS event are answered — only then auto-submit
+      // Extra guard: must have at least one valid answer
+      const hasRealAnswers = questions.some(q => answers[q.id]);
+      if (hasRealAnswers) {
+        setTimeout(() => onSubmit(), 0);
+      }
+      // Otherwise: answers is empty {} — don't submit, stay on Q1
     }
     // eslint-disable-next-line
   }, []);

@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase';
 import { useStore } from '../../store';
 import { motion, AnimatePresence } from 'framer-motion';
 import confetti from 'canvas-confetti';
-import { Award, Share2, CheckCircle2, XCircle, Trophy } from 'lucide-react';
+import { Award, Share2, CheckCircle2, XCircle, Trophy, Clock, Users } from 'lucide-react';
 // FIX #15: ref to track confetti interval for cleanup
 // FIX #16: ref to track AudioContext for cleanup
 
@@ -16,23 +16,28 @@ export function Results() {
   const [eventData, setEventData] = useState(null);
   const [podium, setPodium] = useState([]);
   const [personalScore, setPersonalScore] = useState(null);
+  const [mySubmittedScore, setMySubmittedScore] = useState(null); // shown on waiting screen
   const [questions, setQuestions] = useState([]);
+  // Feature 8: team leaderboard
+  const [teamPodium, setTeamPodium] = useState([]);
   
   // Ceremony States
-  // phases: 'loading' | 'calculating' | 'drumroll' | 'podium-3' | 'podium-2' | 'podium-1' | 'complete'
+  // phases: 'loading' | 'waiting' | 'calculating' | 'drumroll' | 'podium-3' | 'podium-2' | 'podium-1' | 'complete'
   const [phase, setPhase] = useState('loading');
   const [fetchError, setFetchError] = useState(null);
+  const waitingChannelRef = useRef(null); // realtime channel while waiting for event to end
 
   // FIX #15: store confetti interval ref so we can clean up on unmount
   const confettiIntervalRef = useRef(null);
   // FIX #16: store AudioContext ref so we can close it after sound
   const audioCtxRef = useRef(null);
 
-  // Cleanup on unmount: clear confetti, close audio
+  // Cleanup on unmount: clear confetti, close audio, remove waiting channel
   useEffect(() => {
     return () => {
       if (confettiIntervalRef.current) clearInterval(confettiIntervalRef.current);
       if (audioCtxRef.current) audioCtxRef.current.close().catch(() => {});
+      if (waitingChannelRef.current) supabase.removeChannel(waitingChannelRef.current);
     };
   }, []);
 
@@ -47,7 +52,7 @@ export function Results() {
 
         const { data: leaderData, error: lErr } = await supabase
           .from('participation')
-          .select('user_id, score, users(name, avatar_url, college)')
+          .select('user_id, score, team_id, teams(name), users(name, avatar_url, college)')
           .eq('event_id', id)
           .order('score', { ascending: false });
         if (lErr) throw new Error(lErr.message);
@@ -58,16 +63,59 @@ export function Results() {
           if (myRankIndex !== -1) {
             setPersonalScore({ rank: myRankIndex + 1, data: leaderData[myRankIndex] });
           }
+
+          // Feature 8: Aggregate team scores
+          const teamMap = {};
+          leaderData.forEach(p => {
+            if (!p.team_id) return;
+            if (!teamMap[p.team_id]) {
+              teamMap[p.team_id] = { teamName: p.teams?.name || 'Unknown Team', score: 0 };
+            }
+            teamMap[p.team_id].score += p.score || 0;
+          });
+          const sortedTeams = Object.values(teamMap).sort((a, b) => b.score - a.score);
+          if (sortedTeams.length > 0) setTeamPodium(sortedTeams.slice(0, 3));
         }
 
+        // Fetch my personal submitted score (shown on waiting screen too)
         const { data: pData, error: pErr } = await supabase
           .from('participation')
-          .select('answers')
+          .select('answers, score')
           .eq('user_id', user.id)
           .eq('event_id', id)
           .single();
         if (pErr) throw new Error(pErr.message);
+        if (pData?.score !== undefined) setMySubmittedScore(pData.score);
 
+        // ─── KEY FIX: Only start ceremony if event is already ended OR winner announced ──
+        // Ceremony triggers on EITHER: results_announced=true OR status=ended
+        const ceremonyReady = eData.status === 'ended' || eData.results_announced === true;
+
+        if (!ceremonyReady) {
+          setPhase('waiting');
+
+          // Realtime: watch for admin announcing winner OR ending the event
+          const ch = supabase
+            .channel(`results-wait-${id}`)
+            .on('postgres_changes', {
+              event: 'UPDATE', schema: 'public', table: 'events', filter: `id=eq.${id}`
+            }, (payload) => {
+              const ready = payload.new.status === 'ended' || payload.new.results_announced === true;
+              if (ready) {
+                supabase.removeChannel(ch);
+                waitingChannelRef.current = null;
+                setEventData(payload.new);
+                setPhase('calculating');
+              }
+            })
+            .subscribe();
+          waitingChannelRef.current = ch;
+
+          // Don't proceed to ceremony yet — stop here
+          return;
+        }
+
+        // ─── Event already ended when navigating here ─────────────────────
         const { data: qData, error: qErr } = await supabase
           .from('event_questions')
           .select('*, question_bank(*)')
@@ -76,7 +124,6 @@ export function Results() {
         if (qErr) throw new Error(qErr.message);
 
         if (qData && pData) {
-          // FIX #14: use q.id (event_questions row id) — matches how answerQuestion stores answers
           const enrichedQs = qData.map(q => ({
             ...q.question_bank,
             my_answer: pData.answers?.[q.id] || null
@@ -98,11 +145,47 @@ export function Results() {
   // Ceremony Orchestrator Hook
   useEffect(() => {
     if (phase === 'calculating') {
+      // If we transitioned from 'waiting', podium data was loaded but q-review wasn't.
+      // Load final leaderboard + question review now (non-blocking — ceremony still runs).
+      if (questions.length === 0) {
+        (async () => {
+          try {
+            // Re-fetch final leaderboard (scores may have changed while waiting)
+            const { data: finalLeader } = await supabase
+              .from('participation')
+              .select('user_id, score, team_id, teams(name), users(name, avatar_url, college)')
+              .eq('event_id', id)
+              .order('score', { ascending: false });
+            if (finalLeader) {
+              setPodium(finalLeader.slice(0, 3));
+              const myRankIndex = finalLeader.findIndex(p => p.user_id === user?.id);
+              if (myRankIndex !== -1) setPersonalScore({ rank: myRankIndex + 1, data: finalLeader[myRankIndex] });
+              // Team standings
+              const teamMap = {};
+              finalLeader.forEach(p => {
+                if (!p.team_id) return;
+                if (!teamMap[p.team_id]) teamMap[p.team_id] = { teamName: p.teams?.name || 'Unknown Team', score: 0 };
+                teamMap[p.team_id].score += p.score || 0;
+              });
+              const sorted = Object.values(teamMap).sort((a, b) => b.score - a.score);
+              if (sorted.length > 0) setTeamPodium(sorted.slice(0, 3));
+            }
+            // Question review
+            const { data: pData } = await supabase.from('participation').select('answers').eq('user_id', user?.id).eq('event_id', id).single();
+            const { data: qData } = await supabase.from('event_questions').select('*, question_bank(*)').eq('event_id', id).order('order_num', { ascending: true });
+            if (qData && pData) {
+              setQuestions(qData.map(q => ({ ...q.question_bank, my_answer: pData.answers?.[q.id] || null })));
+            }
+          } catch (e) { console.warn('Post-wait data fetch failed:', e); }
+        })();
+      }
+
       const t = setTimeout(() => {
         setPhase('drumroll');
       }, 2500);
       return () => clearTimeout(t);
     }
+
 
     if (phase === 'drumroll') {
       playDrumRoll();
@@ -198,6 +281,60 @@ export function Results() {
 
   if (phase === 'loading') return <div className="bg-slate-950 h-screen flex items-center justify-center text-slate-400 font-bold uppercase tracking-widest text-sm">Validating Database...</div>;
 
+  {/* ── WAITING SCREEN: user submitted but event still live ── */}
+  if (phase === 'waiting') return (
+    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 text-center select-none">
+      {/* Ambient glow */}
+      <div className="fixed top-[-20%] left-1/2 -translate-x-1/2 w-[60%] h-[40%] rounded-full bg-blue-600/10 blur-[120px] pointer-events-none" />
+
+      <div className="relative max-w-md w-full glass-card p-8 md:p-10 space-y-6 border-blue-500/20">
+
+        {/* Spinner */}
+        <div className="flex justify-center">
+          <div className="relative w-20 h-20">
+            <div className="absolute inset-0 rounded-full border-4 border-slate-800" />
+            <div className="absolute inset-0 rounded-full border-4 border-t-blue-500 border-r-blue-500/30 border-b-transparent border-l-transparent animate-spin" />
+            <div className="absolute inset-3 rounded-full bg-blue-600/10 flex items-center justify-center">
+              <Clock className="w-6 h-6 text-blue-400" />
+            </div>
+          </div>
+        </div>
+
+        {/* Message */}
+        <div>
+          <h1 className="text-2xl font-black text-white uppercase tracking-widest mb-2">
+            Quiz Submitted! ✅
+          </h1>
+          <p className="text-slate-400 text-sm leading-relaxed">
+            You've completed the quiz. The winner will be announced once all participants finish or the admin ends the event.
+          </p>
+        </div>
+
+        {/* Personal score card */}
+        {mySubmittedScore !== null && (
+          <div className="bg-slate-900 border border-blue-500/20 rounded-xl p-4">
+            <p className="text-[10px] text-slate-500 uppercase tracking-[0.2em] font-black mb-1">Your Score</p>
+            <p className="text-4xl font-black text-blue-400">{mySubmittedScore}</p>
+            <p className="text-xs text-slate-600 mt-1">points</p>
+          </div>
+        )}
+
+        {/* Live participant count */}
+        <div className="flex items-center justify-center gap-2 text-sm text-slate-500">
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+          </span>
+          Waiting for other participants...
+        </div>
+
+        <p className="text-[11px] text-slate-600 italic">
+          This page will automatically show the leaderboard when the event ends. Do not close this tab.
+        </p>
+      </div>
+    </div>
+  );
+
   // G: Error state with retry
   if (fetchError) return (
     <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-8 text-center">
@@ -210,6 +347,7 @@ export function Results() {
       </div>
     </div>
   );
+
 
   return (
     <div className="min-h-screen bg-slate-950 text-white overflow-x-hidden pt-16">
@@ -314,6 +452,77 @@ export function Results() {
                 </div>
                 <div className="w-36 h-40 md:h-56 bg-gradient-to-t from-slate-900 to-slate-700/40 border-t-4 border-slate-400 flex justify-center pt-4 shadow-[0_0_50px_rgba(148,163,184,0.2)] rounded-t-lg">
                   <span className="text-5xl font-black text-slate-400">2nd</span>
+                </div>
+              </motion.div>
+            )}
+
+          </div>
+        </div>
+      )}
+
+      {/* 
+        ===========================================
+        FEATURE 8: TEAM STANDINGS (if teams exist)
+        ===========================================
+      */}
+      {phase === 'complete' && teamPodium.length > 0 && (
+        <div className="w-full max-w-5xl mx-auto px-4 pb-16">
+          <h2 className="text-3xl font-black uppercase tracking-widest text-center text-slate-300 mb-12">Team Standings</h2>
+          <div className="flex flex-col md:flex-row items-end justify-center gap-4 md:gap-8 min-h-[280px]">
+
+            {/* 3rd place team */}
+            {teamPodium[2] && (
+              <motion.div
+                initial={{ opacity: 0, y: 80 }} animate={{ opacity: 1, y: 0 }}
+                className="flex flex-col items-center order-3 md:order-1"
+              >
+                <div className="bg-orange-800/20 border border-orange-700/50 p-4 rounded-xl mb-3 flex flex-col items-center w-44 text-center">
+                  <div className="w-12 h-12 rounded-full bg-slate-800 border-2 border-orange-500 flex items-center justify-center mb-2">
+                    <span className="font-black text-orange-400 text-lg">3</span>
+                  </div>
+                  <p className="font-bold text-white text-sm truncate w-full">{teamPodium[2].teamName}</p>
+                  <p className="text-xs text-orange-400 font-bold mt-1">{teamPodium[2].score} PTS</p>
+                </div>
+                <div className="w-28 h-28 bg-gradient-to-t from-orange-900 to-orange-800/40 border-t-4 border-orange-500 flex justify-center pt-3 rounded-t-lg">
+                  <span className="text-3xl font-black text-orange-500">3rd</span>
+                </div>
+              </motion.div>
+            )}
+
+            {/* 1st place team */}
+            {teamPodium[0] && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.5, y: 150 }} animate={{ opacity: 1, scale: 1, y: 0 }} transition={{ type: 'spring', bounce: 0.5 }}
+                className="flex flex-col items-center order-1 md:order-2 z-10"
+              >
+                <div className="bg-yellow-500/20 border border-yellow-400/50 p-5 rounded-xl mb-3 flex flex-col items-center shadow-[0_0_40px_rgba(234,179,8,0.3)] w-52 text-center">
+                  <div className="w-16 h-16 rounded-full bg-slate-800 border-4 border-yellow-400 flex items-center justify-center mb-2">
+                    <span className="font-black text-yellow-400 text-2xl">1</span>
+                  </div>
+                  <p className="font-black text-white text-base truncate w-full">{teamPodium[0].teamName}</p>
+                  <p className="text-sm text-yellow-400 font-black mt-1">{teamPodium[0].score} PTS</p>
+                </div>
+                <div className="w-36 h-44 bg-gradient-to-t from-yellow-900 to-yellow-600/40 border-t-4 border-yellow-400 flex justify-center pt-4 shadow-[0_0_60px_rgba(234,179,8,0.25)] rounded-t-lg">
+                  <span className="text-5xl font-black text-yellow-400">1st</span>
+                </div>
+              </motion.div>
+            )}
+
+            {/* 2nd place team */}
+            {teamPodium[1] && (
+              <motion.div
+                initial={{ opacity: 0, y: 100 }} animate={{ opacity: 1, y: 0 }}
+                className="flex flex-col items-center order-2 md:order-3"
+              >
+                <div className="bg-slate-500/20 border border-slate-400/50 p-4 rounded-xl mb-3 flex flex-col items-center w-44 text-center">
+                  <div className="w-14 h-14 rounded-full bg-slate-800 border-2 border-slate-300 flex items-center justify-center mb-2">
+                    <span className="font-black text-slate-300 text-xl">2</span>
+                  </div>
+                  <p className="font-bold text-white text-sm truncate w-full">{teamPodium[1].teamName}</p>
+                  <p className="text-xs text-slate-300 font-bold mt-1">{teamPodium[1].score} PTS</p>
+                </div>
+                <div className="w-32 h-36 bg-gradient-to-t from-slate-900 to-slate-700/40 border-t-4 border-slate-400 flex justify-center pt-3 rounded-t-lg">
+                  <span className="text-4xl font-black text-slate-400">2nd</span>
                 </div>
               </motion.div>
             )}
