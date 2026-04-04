@@ -182,9 +182,26 @@ export function AdminEvents() {
   const confirmStatusChange = async () => {
     if (!confirmModal || confirmInput !== 'CONFIRM') return;
     const { eventId, action } = confirmModal;
-    const updates = { status: action };
-    if (action === 'live')  updates.start_at = new Date().toISOString();
-    if (action === 'ended') updates.end_at   = new Date().toISOString();
+
+    let updates = { status: action };
+    if (action === 'live') {
+      updates.status = 'live';
+      updates.start_at = new Date().toISOString();
+      updates.results_announced = false; // Reset on start
+    }
+    if (action === 'ended') {
+      updates.status = 'ended';
+      updates.end_at = new Date().toISOString();
+    }
+    if (action === 'announce') {
+      const { error } = await supabase.from('events').update({ results_announced: true }).eq('id', eventId);
+      if (!error) fetchEvents();
+      else alert(error.message);
+      setConfirmModal(null);
+      setConfirmInput('');
+      return;
+    }
+
     const { error } = await supabase.from('events').update(updates).eq('id', eventId);
     if (!error) fetchEvents();
     else alert(error.message);
@@ -195,6 +212,7 @@ export function AdminEvents() {
   const setStatusDirect = async (id, status) => {
     // For reset-to-upcoming (less dangerous), no guard needed
     const updates = { status };
+    if (status === 'upcoming') updates.results_announced = false; 
     const { error } = await supabase.from('events').update(updates).eq('id', id);
     if (!error) fetchEvents();
     else alert(error.message);
@@ -267,22 +285,6 @@ export function AdminEvents() {
   // ── Announce Winner (separate from End Event) ───────────────────────
   // Sets results_announced = true WITHOUT changing event status.
   // Participants on waiting screen see the ceremony; event stays live.
-  const [announcing, setAnnouncing] = useState(null); // eventId being announced
-
-  const announceWinner = async (evt) => {
-    if (!window.confirm(`🏆 Announce winner for "${evt.title}"?\n\nThis will show the leaderboard and ceremony to all participants. The event will remain LIVE.`)) return;
-    setAnnouncing(evt.id);
-    const { error } = await supabase
-      .from('events')
-      .update({ results_announced: true })
-      .eq('id', evt.id);
-    if (error) {
-      alert('Failed to announce: ' + error.message);
-    } else {
-      fetchEvents();
-    }
-    setAnnouncing(null);
-  };
 
   if (loading) return (
     <div className="flex justify-center py-20">
@@ -297,20 +299,23 @@ export function AdminEvents() {
       {confirmModal && (
         <div className="fixed inset-0 z-[500] bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4">
           <div className={`bg-slate-900 border rounded-2xl p-6 max-w-md w-full shadow-2xl ${
-            confirmModal.action === 'live' ? 'border-emerald-500/40' : 'border-red-500/40'
+            confirmModal.action === 'live' ? 'border-emerald-500/40' : 
+            confirmModal.action === 'announce' ? 'border-amber-500/40' : 'border-red-500/40'
           }`}>
             <div className="flex items-center gap-3 mb-4">
               <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
-                confirmModal.action === 'live' ? 'bg-emerald-500/20' : 'bg-red-500/20'
+                confirmModal.action === 'live' ? 'bg-emerald-500/20' : 
+                confirmModal.action === 'announce' ? 'bg-amber-500/20' : 'bg-red-500/20'
               }`}>
-                {confirmModal.action === 'live'
-                  ? <Play className="w-5 h-5 text-emerald-400" />
-                  : <Square className="w-5 h-5 text-red-400 fill-red-400" />
+                {confirmModal.action === 'live' ? <Play className="w-5 h-5 text-emerald-400" /> :
+                 confirmModal.action === 'announce' ? <Trophy className="w-5 h-5 text-amber-400" /> :
+                 <Square className="w-5 h-5 text-red-400 fill-red-400" />
                 }
               </div>
               <div>
                 <h3 className="font-black text-white text-base">
-                  {confirmModal.action === 'live' ? 'Go Live?' : '🛑 End Event?'}
+                  {confirmModal.action === 'live' ? 'Go Live?' : 
+                   confirmModal.action === 'announce' ? '🏆 Announce Winner?' : '🛑 End Event?'}
                 </h3>
                 <p className="text-xs text-slate-400 truncate max-w-[220px]">{confirmModal.title}</p>
               </div>
@@ -326,7 +331,9 @@ export function AdminEvents() {
                 <p className="text-[10px] text-slate-500 uppercase tracking-widest">Questions</p>
               </div>
               <div className="bg-slate-800/60 rounded-lg p-2">
-                <p className="text-sm font-black text-white capitalize">{confirmModal.action === 'live' ? 'LIVE' : 'END'}</p>
+                <p className="text-sm font-black text-white capitalize">
+                  {confirmModal.action === 'live' ? 'LIVE' : confirmModal.action === 'announce' ? 'WINNER' : 'END'}
+                </p>
                 <p className="text-[10px] text-slate-500 uppercase tracking-widest">Action</p>
               </div>
             </div>
@@ -357,12 +364,13 @@ export function AdminEvents() {
                 onClick={confirmStatusChange}
                 disabled={confirmInput !== 'CONFIRM'}
                 className={`flex-1 px-4 py-2.5 rounded-xl font-black text-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
-                  confirmModal.action === 'live'
-                    ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
-                    : 'bg-red-600 hover:bg-red-500 text-white'
+                  confirmModal.action === 'live' ? 'bg-emerald-600 hover:bg-emerald-500 text-white' :
+                  confirmModal.action === 'announce' ? 'bg-amber-600 hover:bg-amber-500 text-white' :
+                  'bg-red-600 hover:bg-red-500 text-white'
                 }`}
               >
-                {confirmModal.action === 'live' ? '🚀 Go Live' : '🛑 End Event'}
+                {confirmModal.action === 'live' ? '🚀 Go Live' : 
+                 confirmModal.action === 'announce' ? '🏆 Announce' : '🛑 End Event'}
               </button>
             </div>
           </div>
@@ -575,12 +583,12 @@ export function AdminEvents() {
                       <>
                         {/* 🏆 Announce Winner — triggers ceremony WITHOUT ending the event */}
                         <button
-                          onClick={() => announceWinner(evt)}
-                          disabled={announcing === evt.id || evt.results_announced}
+                          onClick={() => initiateStatusChange(evt, 'announce')}
+                          disabled={evt.results_announced}
                           className="px-4 py-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed text-slate-950 font-black uppercase text-xs tracking-widest rounded-lg flex items-center gap-2 shadow-[0_0_16px_rgba(245,158,11,0.4)] transition-all"
                         >
                           <Trophy className="w-3.5 h-3.5" />
-                          {announcing === evt.id ? 'Announcing...' : evt.results_announced ? 'Announced ✓' : 'Announce Winner'}
+                          {evt.results_announced ? 'Announced ✓' : 'Announce Winner'}
                         </button>
 
                         {/* 🛑 End Event — fully closes the event */}
