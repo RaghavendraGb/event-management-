@@ -232,13 +232,15 @@ export function Sidebar() {
       </div>
 
       {/* ── MOBILE: Topbar hamburger ─────────────────────── */}
-      <button 
-        onClick={() => setIsOpen(!isOpen)}
-        aria-label="Toggle menu"
-        className="lg:hidden fixed top-3 left-3 z-[60] p-2.5 rounded-xl bg-slate-900/90 border border-white/10 text-slate-300 hover:text-white backdrop-blur-md shadow-lg"
-      >
-        {isOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-      </button>
+      {!isLiveActive && (
+        <button 
+          onClick={() => setIsOpen(!isOpen)}
+          aria-label="Toggle menu"
+          className="lg:hidden fixed top-3 left-3 z-[60] p-2.5 rounded-xl bg-slate-900/90 border border-white/10 text-slate-300 hover:text-white backdrop-blur-md shadow-lg"
+        >
+          {isOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+        </button>
+      )}
 
       {/* ── MOBILE: Slide-over drawer ────────────────────── */}
       {isOpen && (
@@ -326,36 +328,38 @@ export function Sidebar() {
       </div>
 
       {/* ── MOBILE: Bottom Navigation Bar ───────────────── */}
-      <nav className="bottom-nav" aria-label="Mobile navigation">
-        {bottomNavItems.map((item) => {
-          const isActive = location.pathname === item.path || 
-            (item.path === '/admin' && location.pathname.startsWith('/admin'));
-          return (
+      {!isLiveActive && (
+        <nav className="bottom-nav" aria-label="Mobile navigation">
+          {bottomNavItems.map((item) => {
+            const isActive = location.pathname === item.path || 
+              (item.path === '/admin' && location.pathname.startsWith('/admin'));
+            return (
+              <Link
+                key={item.path}
+                to={item.path}
+                onClick={(e) => handleNavClick(e, item.path)}
+                className={cn(
+                  'flex flex-col items-center justify-center gap-1 px-2 pt-2 min-w-0 flex-1 text-center transition-colors',
+                  isActive ? 'text-blue-400' : 'text-slate-500 hover:text-slate-300'
+                )}
+              >
+                <item.icon className="w-5 h-5 shrink-0" />
+                <span className="text-[10px] font-bold tracking-wide truncate w-full text-center">{item.name}</span>
+              </Link>
+            );
+          })}
+          {/* Sign in shortcut when logged out */}
+          {!user && (
             <Link
-              key={item.path}
-              to={item.path}
-              onClick={(e) => handleNavClick(e, item.path)}
-              className={cn(
-                'flex flex-col items-center justify-center gap-1 px-2 pt-2 min-w-0 flex-1 text-center transition-colors',
-                isActive ? 'text-blue-400' : 'text-slate-500 hover:text-slate-300'
-              )}
+              to="/login"
+              className="flex flex-col items-center justify-center gap-1 px-2 pt-2 min-w-0 flex-1 text-center text-blue-400"
             >
-              <item.icon className="w-5 h-5 shrink-0" />
-              <span className="text-[10px] font-bold tracking-wide truncate w-full text-center">{item.name}</span>
+              <LogOut className="w-5 h-5 shrink-0" />
+              <span className="text-[10px] font-bold tracking-wide">Sign In</span>
             </Link>
-          );
-        })}
-        {/* Sign in shortcut when logged out */}
-        {!user && (
-          <Link
-            to="/login"
-            className="flex flex-col items-center justify-center gap-1 px-2 pt-2 min-w-0 flex-1 text-center text-blue-400"
-          >
-            <LogOut className="w-5 h-5 shrink-0" />
-            <span className="text-[10px] font-bold tracking-wide">Sign In</span>
-          </Link>
-        )}
-      </nav>
+          )}
+        </nav>
+      )}
     </>
   );
 }
