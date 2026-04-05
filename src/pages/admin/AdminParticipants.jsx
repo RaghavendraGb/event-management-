@@ -70,7 +70,7 @@ export function AdminParticipants() {
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.setAttribute('download', 'EventX_Registrations.csv');
+    link.setAttribute('download', 'Zentrix_Registrations.csv');
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -153,88 +153,130 @@ export function AdminParticipants() {
   return (
     <div className="p-6 md:p-10 max-w-7xl mx-auto space-y-8">
       
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 border-b border-white/10 pb-6">
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 32, gap: 16 }}>
         <div>
-          <h1 className="text-3xl font-black text-white uppercase tracking-widest mb-2">Participant Ledger</h1>
-          <div className="flex items-center gap-4 bg-slate-900 border border-slate-800 p-2 rounded-lg">
-             <Search className="w-4 h-4 text-slate-500 ml-2" />
-             <select className="bg-transparent border-none text-white text-sm font-bold min-w-[250px] focus:ring-0" value={selectedEventId} onChange={e => setSelectedEventId(e.target.value)}>
-               {events.map(e => <option key={e.id} value={e.id}>{e.title}</option>)}
-             </select>
+          <h1 style={{ fontSize: 28, fontWeight: 800, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Personnel Ledger</h1>
+          <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginTop: 4 }}>Audit registrations, verify digital signatures, and export final participation matrices.</p>
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={toggleScanner} className="btn-ghost" style={{ padding: '10px 20px', background: scannerOpen ? 'var(--blue)' : 'var(--elevated)', color: scannerOpen ? '#000' : 'var(--text-primary)' }}>
+            <ScanLine size={16} /> {scannerOpen ? 'Disable Optic' : 'Ticket Scanner'}
+          </button>
+          <button onClick={exportToCSV} className="btn-primary" style={{ padding: '10px 20px', background: 'var(--green)', color: '#000' }}>
+            <Download size={16} /> Export Matrix
+          </button>
+        </div>
+      </div>
+
+      {/* Event Selection & Search */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '12px 20px' }}>
+        <div style={{ flex: 1 }}>
+          <label style={{ display: 'block', fontSize: 9, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Select Deployment</label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <Search size={14} style={{ color: 'var(--text-muted)' }} />
+            <select
+              style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', fontSize: 14, fontWeight: 700, padding: 0, width: '100%', outline: 'none' }}
+              value={selectedEventId}
+              onChange={e => setSelectedEventId(e.target.value)}
+            >
+              {events.map(e => <option key={e.id} value={e.id}>{e.title}</option>)}
+            </select>
           </div>
         </div>
-
-        <div className="flex gap-3 w-full md:w-auto">
-          <button onClick={toggleScanner} className={`flex-1 md:flex-none px-6 py-2.5 rounded-lg font-black uppercase text-xs tracking-widest flex items-center justify-center gap-2 transition-all ${scannerOpen ? 'bg-red-600 text-white shadow-[0_0_20px_rgba(220,38,38,0.4)]' : 'bg-indigo-600 hover:bg-indigo-500 text-white'}`}>
-             <ScanLine className="w-4 h-4"/> {scannerOpen ? 'Close Optic' : 'Launch Ticket Scanner'}
-          </button>
-          <button onClick={exportToCSV} className="flex-1 md:flex-none px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-black uppercase text-xs tracking-widest flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(16,185,129,0.3)]">
-             <Download className="w-4 h-4"/> Export CSV Matrix
-          </button>
+        <div style={{ width: 1, height: 32, background: 'var(--border)' }} />
+        <div style={{ textAlign: 'right' }}>
+          <p style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-primary)' }}>{participations.length}</p>
+          <p style={{ fontSize: 9, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Records</p>
         </div>
       </div>
 
       {/* QR Scanner UI */}
       {scannerOpen && (
-        <div className="glass-card p-6 border-l-4 border-l-indigo-500 flex flex-col items-center max-w-md mx-auto">
-           <p className="font-bold text-white uppercase tracking-widest text-sm mb-4">Awaiting Optical Signature</p>
-           <div className="relative w-full aspect-square overflow-hidden rounded-xl border-4 border-indigo-500/50 shadow-inner">
-             <video ref={videoRef} className="absolute inset-0 w-full h-full object-cover" />
-             <canvas ref={canvasRef} className="hidden" />
-             <div className="absolute inset-0 border-[40px] border-black/40 pointer-events-none"></div>
-             <div className="absolute top-1/2 left-0 right-0 h-0.5 bg-indigo-500 shadow-[0_0_10px_rgba(99,102,241,1)] animate-ping"></div>
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--blue)', borderRadius: 12, padding: 24, maxWidth: 480, margin: '0 auto', textAlign: 'center' }}>
+           <p style={{ fontSize: 11, fontWeight: 800, color: 'var(--blue)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 20 }}>Awaiting Digital Signature</p>
+           <div style={{ position: 'relative', width: '100%', aspectRatio: '1/1', overflow: 'hidden', borderRadius: 12, border: '1px solid var(--border)', background: '#000' }}>
+             <video ref={videoRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectCover: 'cover' }} />
+             <canvas ref={canvasRef} style={{ display: 'none' }} />
+             <div style={{ position: 'absolute', inset: 0, border: '40px solid rgba(0,0,0,0.5)', pointerEvents: 'none' }} />
+             <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, height: 1, background: 'var(--blue)', boxShadow: '0 0 10px var(--blue)', animation: 'scan 2s ease-in-out infinite' }} />
            </div>
+           <style>{`
+             @keyframes scan {
+               0%, 100% { transform: translateY(-100px); opacity: 0; }
+               50% { transform: translateY(100px); opacity: 1; }
+             }
+           `}</style>
         </div>
       )}
 
       {/* QR Modal Result */}
       {scanResult && !scannerOpen && (
-        <div className={`p-6 rounded-xl border max-w-md mx-auto text-center shadow-2xl backdrop-blur-md ${scanResult.valid ? 'bg-emerald-900/30 border-emerald-500' : 'bg-red-900/30 border-red-500'}`}>
-           {scanResult.valid ? <CheckCircle2 className="w-16 h-16 text-emerald-500 mx-auto mb-4" /> : <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />}
-           <h3 className="text-2xl font-black text-white">{scanResult.valid ? 'Verified' : 'Invalid Signature'}</h3>
-           {scanResult.valid && <p className="text-emerald-400 font-bold uppercase tracking-widest mt-2">{scanResult.user}</p>}
-           {!scanResult.valid && <p className="text-red-400 mt-2">{scanResult.message}</p>}
-           <p className="text-[10px] text-slate-500 mt-4 mono break-all">{scanResult.dbId}</p>
+        <div style={{
+          background: scanResult.valid ? 'rgba(16,185,129,0.06)' : 'rgba(239,68,68,0.06)',
+          border: `1px solid ${scanResult.valid ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}`,
+          borderRadius: 12, padding: 32, maxWidth: 480, margin: '0 auto', textAlign: 'center'
+        }}>
+           <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'var(--elevated)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
+             {scanResult.valid ? <CheckCircle2 size={32} style={{ color: 'var(--green)' }} /> : <AlertCircle size={32} style={{ color: 'var(--red)' }} />}
+           </div>
+           <h3 style={{ fontSize: 20, fontWeight: 800, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+             {scanResult.valid ? 'Identity Verified' : 'Invalid Signature'}
+           </h3>
+           <p style={{ fontSize: 14, color: scanResult.valid ? 'var(--green)' : 'var(--red)', fontWeight: 700, marginTop: 8 }}>{scanResult.valid ? scanResult.user : scanResult.message}</p>
+           <button onClick={() => setScanResult(null)} className="btn-ghost" style={{ marginTop: 24, fontSize: 11, padding: '8px 16px' }}>Acknowledge</button>
         </div>
       )}
 
-
       {/* Main Table */}
-      <div className="glass-card overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead className="bg-slate-900 border-b border-white/5">
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+            <thead style={{ background: 'var(--elevated)', borderBottom: '1px solid var(--border)' }}>
               <tr>
-                <th className="p-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">Participant</th>
-                <th className="p-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">Team</th>
-                <th className="p-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">Score</th>
-                <th className="p-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">Violations</th>
-                <th className="p-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">Status</th>
+                <th style={{ padding: '12px 16px', fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Participant</th>
+                <th style={{ padding: '12px 16px', fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Entity / Team</th>
+                <th style={{ padding: '12px 16px', fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Performance</th>
+                <th style={{ padding: '12px 16px', fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Security Flags</th>
+                <th style={{ padding: '12px 16px', fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', textAlign: 'right' }}>Status</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-white/5">
+            <tbody style={{ fontSize: 13 }}>
               {participations.map(p => (
-                <tr key={p.id} className="hover:bg-white/[0.02] transition-colors">
-                  <td className="p-4">
-                    <p className="font-bold text-white text-sm">{p.users.name}</p>
-                    <p className="text-[10px] text-slate-400 uppercase tracking-widest">{p.users.college}</p>
+                <tr key={p.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                  <td style={{ padding: '14px 16px' }}>
+                    <p style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{p.users?.name || 'Anonymous'}</p>
+                    <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>{p.users?.email}</p>
                   </td>
-                  <td className="p-4 font-mono text-sm text-purple-400 font-bold">{p.teams?.name || '-'}</td>
-                  <td className="p-4 font-black text-emerald-400 text-lg">{p.score}</td>
-                  <td className="p-4">
-                    {p.violations > 0 
-                     ? <span className="bg-red-500/20 text-red-500 border border-red-500/50 px-2 py-1 rounded text-xs font-black">{p.violations} Flags</span> 
-                     : <span className="text-slate-500 text-sm">Clean</span>}
+                  <td style={{ padding: '14px 16px' }}>
+                    <p style={{ color: 'var(--text-secondary)' }}>{p.users?.college}</p>
+                    <p style={{ fontSize: 10, fontWeight: 800, color: 'var(--blue)', textTransform: 'uppercase', marginTop: 2 }}>{p.teams?.name || 'Individual'}</p>
                   </td>
-                  <td className="p-4">
-                    <span className="text-[10px] uppercase font-black text-slate-400 bg-slate-900 border border-slate-800 px-2 py-1 rounded">
+                  <td style={{ padding: '14px 16px' }}>
+                    <p style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-primary)' }}>{p.score}</p>
+                  </td>
+                  <td style={{ padding: '14px 16px' }}>
+                    {p.violations > 0 ? (
+                      <span style={{ fontSize: 9, fontWeight: 800, color: 'var(--red)', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', padding: '2px 8px', borderRadius: 4, textTransform: 'uppercase' }}>
+                        {p.violations} Security Violations
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: 9, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Verified Clean</span>
+                    )}
+                  </td>
+                  <td style={{ padding: '14px 16px', textAlign: 'right' }}>
+                    <span style={{ fontSize: 9, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', background: 'var(--elevated)', border: '1px solid var(--border)', padding: '2px 8px', borderRadius: 4 }}>
                       {p.status}
                     </span>
                   </td>
                 </tr>
               ))}
               {participations.length === 0 && (
-                <tr><td colSpan="5" className="p-8 text-center text-slate-500 font-bold">No participants pulled into ledger yet.</td></tr>
+                <tr>
+                  <td colSpan="5" style={{ padding: 48, textAlign: 'center', color: 'var(--text-muted)' }}>
+                    No participant data synchronized for this deployment.
+                  </td>
+                </tr>
               )}
             </tbody>
           </table>

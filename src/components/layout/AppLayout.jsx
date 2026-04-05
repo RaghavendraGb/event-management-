@@ -9,10 +9,11 @@ export function AppLayout() {
   const networkStatus = useStore((state) => state.networkStatus);
   const [showRecovery, setShowRecovery] = useState(false);
 
-  // Show recovery banner briefly then fade it
   useEffect(() => {
     if (networkStatus === 'recovery') {
       setShowRecovery(true);
+      const t = setTimeout(() => setShowRecovery(false), 4000);
+      return () => clearTimeout(t);
     } else {
       setShowRecovery(false);
     }
@@ -22,24 +23,24 @@ export function AppLayout() {
     if (networkStatus === 'offline') {
       return (
         <div className="network-banner network-banner--offline">
-          <WifiOff className="w-3.5 h-3.5" />
-          Offline — answers saved locally, don't panic
+          <WifiOff style={{ width: 14, height: 14, flexShrink: 0 }} />
+          Offline — answers saved locally
         </div>
       );
     }
     if (networkStatus === 'slow') {
       return (
         <div className="network-banner network-banner--slow">
-          <Signal className="w-3.5 h-3.5" />
-          Slow network detected — switching to recovery mode
+          <Signal style={{ width: 14, height: 14, flexShrink: 0 }} />
+          Slow network — switching to recovery mode
         </div>
       );
     }
     if (showRecovery) {
       return (
         <div className="network-banner network-banner--recovery">
-          <Wifi className="w-3.5 h-3.5" />
-          Reconnected — syncing answers
+          <Wifi style={{ width: 14, height: 14, flexShrink: 0 }} />
+          Reconnected — syncing
         </div>
       );
     }
@@ -47,22 +48,29 @@ export function AppLayout() {
   };
 
   return (
-    <div className="flex h-dvh bg-slate-950 overflow-hidden">
+    <div style={{ display: 'flex', height: '100dvh', background: 'var(--bg)', overflow: 'hidden' }}>
       <Sidebar />
-      <main className="flex-1 overflow-y-auto overflow-x-hidden relative flex flex-col">
-        {/* Ambient light blobs — decorative only */}
-        <div className="fixed top-[-10%] left-[10%] lg:left-[calc(16rem-10%)] w-[40%] h-[40%] rounded-full bg-blue-600/10 blur-[120px] pointer-events-none" />
-        <div className="fixed bottom-[-10%] right-[-5%] w-[40%] h-[40%] rounded-full bg-purple-600/10 blur-[120px] pointer-events-none" />
-
-        {/* Global Live Event Banner (Feature 1) */}
+      <main style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', display: 'flex', flexDirection: 'column', position: 'relative' }}>
+        {/* Global Live Event Banner */}
         <LiveBanner />
 
-        {/* Network Status Banner (Feature 5) */}
+        {/* Network Status Banner */}
         {getNetworkBanner()}
 
         {/* Page content */}
-        <div className="relative z-10 p-4 sm:p-6 md:p-8 pt-16 lg:pt-8 main-content-area min-h-full flex-1">
-          <Outlet />
+        <div className="main-content-area" style={{ flex: 1, padding: '1rem', position: 'relative' }}>
+          {/* Desktop: more padding */}
+          <style>{`
+            @media (min-width: 768px) {
+              .app-main-content { padding: 20px 24px; }
+            }
+            @media (min-width: 1024px) {
+              .app-main-content { padding: 28px 32px; max-width: 1100px; margin: 0 auto; }
+            }
+          `}</style>
+          <div className="app-main-content" style={{ padding: '16px' }}>
+            <Outlet />
+          </div>
         </div>
       </main>
     </div>

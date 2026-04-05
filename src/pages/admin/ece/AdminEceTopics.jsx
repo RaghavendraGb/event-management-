@@ -32,13 +32,14 @@ function PositionCanvas({ x, y, onChange }) {
   const onTouchMove = (e) => { if (dragging.current) { const t = e.touches[0]; getPos(t.clientX, t.clientY); } };
   const onTouchEnd = () => { dragging.current = false; };
 
-  // Convert 900x620 coords to canvas %
   const dotLeft = `${(x / 900) * 100}%`;
   const dotTop = `${(y / 620) * 100}%`;
 
   return (
-    <div className="space-y-2">
-      <label className="admin-label">Mind Map Position <span className="text-slate-600 font-normal">(drag the dot)</span></label>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+        Canvas Placement (Drag Dot)
+      </label>
       <div
         ref={canvasRef}
         onMouseDown={onMouseDown}
@@ -48,24 +49,44 @@ function PositionCanvas({ x, y, onChange }) {
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
-        className="relative w-full rounded-xl border border-blue-500/20 bg-slate-800/80 cursor-crosshair select-none overflow-hidden"
-        style={{ aspectRatio: '900/620', maxWidth: '400px',
-          backgroundImage: 'linear-gradient(rgba(59,130,246,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(59,130,246,0.04) 1px, transparent 1px)',
-          backgroundSize: '10% 10%'
+        style={{
+          position: 'relative',
+          width: '100%',
+          aspectRatio: '900/620',
+          background: 'var(--elevated)',
+          border: '1px solid var(--border)',
+          borderRadius: 8,
+          cursor: 'crosshair',
+          overflow: 'hidden',
+          backgroundImage: 'radial-gradient(var(--border) 1px, transparent 1px)',
+          backgroundSize: '20px 20px'
         }}
       >
-        {/* Center cross */}
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <div className="w-px h-full bg-blue-500/10" />
-          <div className="absolute h-px w-full bg-blue-500/10" />
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+          <div style={{ width: 1, height: '100%', background: 'rgba(59,130,246,0.1)' }} />
+          <div style={{ position: 'absolute', height: 1, width: '100%', background: 'rgba(59,130,246,0.1)' }} />
         </div>
-        {/* Dot */}
         <div
-          className="absolute w-5 h-5 rounded-full bg-blue-500 border-2 border-white shadow-lg -translate-x-1/2 -translate-y-1/2 pointer-events-none transition-none"
-          style={{ left: dotLeft, top: dotTop }}
+          style={{
+            position: 'absolute',
+            width: 14,
+            height: 14,
+            borderRadius: '50%',
+            background: 'var(--blue)',
+            border: '2px solid #fff',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+            left: dotLeft,
+            top: dotTop,
+            transform: 'translate(-50%, -50%)',
+            pointerEvents: 'none'
+          }}
         />
       </div>
-      <p className="text-[10px] text-slate-500">X: <span className="text-slate-300 font-mono">{x}</span> &nbsp;/&nbsp; Y: <span className="text-slate-300 font-mono">{y}</span> &nbsp;—&nbsp; canvas is 900×620. Center is 450,310.</p>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+        <span>X: {x}</span>
+        <span>Y: {y}</span>
+        <span>Relative to 900x620</span>
+      </div>
     </div>
   );
 }
@@ -75,13 +96,22 @@ export function AdminEceTopics() {
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState(EMPTY_FORM);
   const [editId, setEditId] = useState(null);
-  const [saving, setSaving] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
+
+  const Label = ({ children }) => (
+    <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
+      {children}
+    </label>
+  );
 
   const loadTopics = () => {
     supabase.from('ece_topics').select('*, ece_resources(id)').order('order_num')
-      .then(({ data }) => { setTopics(data || []); setLoading(false); });
+      .then(({ data }) => {
+        setTopics(data || []);
+        setLoading(false);
+      });
   };
 
   useEffect(() => { loadTopics(); }, []);
@@ -120,7 +150,6 @@ export function AdminEceTopics() {
   const handleDelete = async (topic) => {
     if (!window.confirm(`Delete topic "${topic.name}"? This will also delete all its resources.`)) return;
     setDeletingId(topic.id);
-    // Delete icon from Cloudinary
     if (topic.icon_public_id) {
       await deleteFromCloudinary(topic.icon_public_id, 'image');
     }
@@ -139,125 +168,152 @@ export function AdminEceTopics() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-6 space-y-6">
+    <div className="max-w-4xl mx-auto px-4 py-8 space-y-8">
       {/* Header */}
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-blue-500/20 flex items-center justify-center">
-            <Cpu className="w-5 h-5 text-blue-400" />
-          </div>
-          <div>
-            <h1 className="text-xl font-black text-white">Manage Topics</h1>
-            <p className="text-xs text-slate-500">Topics appear as nodes in the mind map</p>
-          </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <h1 style={{ fontSize: 28, fontWeight: 900, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.1em', margin: 0 }}>Map Architect</h1>
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>Configure knowledge nodes and mind map trajectories.</p>
         </div>
         <button
           onClick={() => { setShowForm(!showForm); setForm(EMPTY_FORM); setEditId(null); }}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold transition-colors"
+          className="btn-primary" style={{ padding: '10px 20px', fontSize: 11, fontWeight: 700, textTransform: 'uppercase' }}
         >
-          <Plus className="w-4 h-4" />
-          Add Topic
+          <Plus size={16} /> New Node
         </button>
       </div>
 
-      {/* Form */}
+      {/* Form Section */}
       {showForm && (
-        <form onSubmit={handleSubmit} className="p-5 rounded-2xl border border-white/10 bg-slate-900/60 space-y-4">
-          <h2 className="text-sm font-bold text-slate-200">{editId ? 'Edit Topic' : 'New Topic'}</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: 32, animation: 'fadeIn 0.2s ease-out' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 32 }}>
             <div>
-              <label className="admin-label">Name *</label>
-              <input className="ece-input" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} required placeholder="e.g. Microcontrollers" />
+              <h2 style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>{editId ? 'Architecting Node' : 'Establish New Node'}</h2>
+              <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>Define node metadata and spatial coordinates.</p>
             </div>
+            <button onClick={() => { setShowForm(false); setEditId(null); }} className="btn-ghost" style={{ padding: 8, minHeight: 'unset' }}>
+              <X size={20} />
+            </button>
+          </div>
+
+          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 20 }}>
+              <div>
+                <Label>Node Label *</Label>
+                <input required className="input" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="e.g. Embedded Systems" />
+              </div>
+              <div>
+                <Label>Sequencing Index</Label>
+                <input type="number" className="input" value={form.order_num} onChange={(e) => setForm((f) => ({ ...f, order_num: e.target.value }))} />
+              </div>
+            </div>
+
             <div>
-              <label className="admin-label">Order</label>
-              <input type="number" className="ece-input" value={form.order_num} onChange={(e) => setForm((f) => ({ ...f, order_num: e.target.value }))} />
+              <Label>Description / Syllabus Context</Label>
+              <textarea rows={3} className="input" style={{ resize: 'none' }} value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} placeholder="Defining the academic scope of this node…" />
             </div>
-          </div>
-          <div>
-            <label className="admin-label">Description</label>
-            <textarea className="ece-textarea" value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} rows={2} placeholder="Brief description…" />
-          </div>
-          {/* Color */}
-          <div>
-            <label className="admin-label">Color</label>
-            <div className="flex flex-wrap gap-2 mt-1">
-              {DEFAULT_COLORS.map((c) => (
-                <button key={c} type="button" onClick={() => setForm((f) => ({ ...f, color: c }))}
-                  className={`w-7 h-7 rounded-lg transition-all ${form.color === c ? 'ring-2 ring-white ring-offset-2 ring-offset-slate-900' : ''}`}
-                  style={{ background: c }}
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(250px, 1fr) 1.5fr', gap: 32 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                <div>
+                  <Label>Visual Accent</Label>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {DEFAULT_COLORS.map((c) => (
+                      <button key={c} type="button" onClick={() => setForm((f) => ({ ...f, color: c }))}
+                        style={{ width: 28, height: 28, borderRadius: 8, background: c, border: form.color === c ? '2px solid #fff' : '1px solid rgba(0,0,0,0.2)', cursor: 'pointer', transition: 'transform 0.1s' }}
+                        onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.1)'}
+                        onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                      />
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <Label>Resource Icon (Cloudinary)</Label>
+                  <div style={{ padding: 16, background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 12 }}>
+                    <CloudinaryUpload
+                      folder="ece_hub/topics" resourceType="image" accept="image/*" label="Drop icon SVG/PNG"
+                      currentUrl={form.icon_url} currentPublicId={form.icon_public_id}
+                      onUpload={handleIconUpload} onDelete={handleIconDelete}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <PositionCanvas
+                  x={Number(form.position_x) || 0}
+                  y={Number(form.position_y) || 0}
+                  onChange={(px, py) => setForm((f) => ({ ...f, position_x: px, position_y: py }))}
                 />
-              ))}
-              <input type="color" value={form.color} onChange={(e) => setForm((f) => ({ ...f, color: e.target.value }))}
-                className="w-7 h-7 rounded-lg cursor-pointer border-0 bg-transparent" title="Custom color" />
+              </div>
             </div>
-          </div>
-          {/* Icon upload */}
-          <CloudinaryUpload
-            folder="ece_hub/topics"
-            resourceType="image"
-            accept="image/*"
-            label="Topic Icon Image"
-            currentUrl={form.icon_url}
-            currentPublicId={form.icon_public_id}
-            onUpload={handleIconUpload}
-            onDelete={handleIconDelete}
-          />
-          {/* Mind map position canvas */}
-          <PositionCanvas
-            x={Number(form.position_x) || 0}
-            y={Number(form.position_y) || 0}
-            onChange={(px, py) => setForm((f) => ({ ...f, position_x: px, position_y: py }))}
-          />
-          <div className="flex gap-3">
-            <button type="submit" disabled={saving} className="ece-btn-primary flex items-center gap-2">
-              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-              {editId ? 'Update' : 'Create'}
-            </button>
-            <button type="button" onClick={() => { setShowForm(false); setEditId(null); setForm(EMPTY_FORM); }} className="ece-btn-secondary flex items-center gap-2">
-              <X className="w-4 h-4" /> Cancel
-            </button>
-          </div>
-        </form>
+
+            <div style={{ display: 'flex', gap: 12, borderTop: '1px solid var(--border)', paddingTop: 24, justifyContent: 'flex-end' }}>
+              <button onClick={() => { setShowForm(false); setEditId(null); }} type="button" className="btn-ghost" style={{ padding: '10px 24px' }}>Cancel</button>
+              <button type="submit" disabled={saving} className="btn-primary" style={{ padding: '10px 32px' }}>
+                {saving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />} 
+                {editId ? 'Verify & Persist' : 'Establish Node'}
+              </button>
+            </div>
+          </form>
+        </div>
       )}
 
       {/* Topics list */}
-      {loading ? (
-        <div className="flex justify-center py-12"><Loader2 className="w-7 h-7 animate-spin text-slate-500" /></div>
-      ) : topics.length === 0 ? (
-        <div className="text-center py-12 text-slate-500 text-sm">No topics yet. Add one above.</div>
-      ) : (
-        <div className="space-y-3">
-          {topics.map((topic) => (
-            <div key={topic.id} className="flex items-center gap-3 p-4 rounded-2xl border border-white/8 bg-slate-900/60">
-              <GripVertical className="w-4 h-4 text-slate-600 shrink-0" />
-              {/* Icon */}
-              {topic.icon_url ? (
-                <img src={topic.icon_url} alt={topic.name} className="w-10 h-10 rounded-xl object-contain shrink-0" />
-              ) : (
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center text-base font-black text-white shrink-0"
-                  style={{ background: topic.color || '#3b82f6' }}>
-                  {topic.name.charAt(0)}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <h3 style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 4 }}>Active Nodes Registry</h3>
+        {loading ? (
+          <div className="flex justify-center py-16"><Loader2 className="w-8 h-8 animate-spin text-slate-500" /></div>
+        ) : topics.length === 0 ? (
+          <div style={{ textAlign: 'center', py: 48, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 32 }}>
+            <Cpu size={32} style={{ color: 'var(--text-muted)', marginBottom: 12, opacity: 0.3 }} />
+            <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>No topics architected yet. Initialize your first node above.</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {topics.map((topic) => (
+              <div key={topic.id} style={{ 
+                display: 'flex', alignItems: 'center', gap: 16, padding: '14px 20px', 
+                borderRadius: 12, background: 'var(--surface)', border: '1px solid var(--border)',
+                transition: 'border-color 0.2s',
+              }}
+              onMouseOver={(e) => e.currentTarget.style.borderColor = 'var(--blue)'}
+              onMouseOut={(e) => e.currentTarget.style.borderColor = 'var(--border)'}
+              >
+                <GripVertical size={14} style={{ color: 'var(--text-muted)', cursor: 'grab', shrink: 0 }} />
+                
+                {topic.icon_url ? (
+                  <img src={topic.icon_url} alt={topic.name} style={{ width: 40, height: 40, borderRadius: 8, objectFit: 'contain', background: 'var(--elevated)', padding: 4, shrink: 0 }} />
+                ) : (
+                  <div style={{ width: 40, height: 40, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 900, color: '#fff', background: topic.color || 'var(--blue)', shrink: 0 }}>
+                    {topic.name.charAt(0)}
+                  </div>
+                )}
+
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>{topic.name}</p>
+                  <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{topic.ece_resources?.length || 0} Professional Resources Linked</p>
                 </div>
-              )}
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-bold text-slate-100">{topic.name}</p>
-                <p className="text-xs text-slate-500">{topic.ece_resources?.length || 0} resources</p>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--text-muted)', background: 'var(--elevated)', padding: '3px 10px', borderRadius: 6, border: '1px solid var(--border)' }}>
+                    X:{topic.position_x} Y:{topic.position_y}
+                  </div>
+                  <div style={{ width: 10, height: 10, borderRadius: '50%', background: topic.color || 'var(--blue)', boxShadow: `0 0 8px ${topic.color}` }} />
+                  <div style={{ display: 'flex', gap: 4, marginLeft: 8 }}>
+                    <button onClick={() => handleEdit(topic)} className="btn-ghost" style={{ padding: 8, minHeight: 'unset' }}>
+                      <Pencil size={14} />
+                    </button>
+                    <button onClick={() => handleDelete(topic)} disabled={deletingId === topic.id} className="btn-ghost" style={{ padding: 8, minHeight: 'unset', color: 'var(--red)' }}>
+                      {deletingId === topic.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                    </button>
+                  </div>
+                </div>
               </div>
-              <div className="flex items-center gap-1 shrink-0">
-                <div className="w-4 h-4 rounded-full shrink-0" style={{ background: topic.color }} />
-                <button onClick={() => handleEdit(topic)} className="p-2 rounded-lg hover:bg-slate-700 text-slate-400 hover:text-white transition-colors">
-                  <Pencil className="w-3.5 h-3.5" />
-                </button>
-                <button onClick={() => handleDelete(topic)} disabled={deletingId === topic.id}
-                  className="p-2 rounded-lg hover:bg-red-500/10 text-slate-400 hover:text-red-400 transition-colors">
-                  {deletingId === topic.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

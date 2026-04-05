@@ -23,6 +23,8 @@ import { LiveEvent } from './pages/live/LiveEvent';
 import { Results } from './pages/live/Results';
 import { Certificate } from './pages/live/Certificate';
 import { Verify } from './pages/live/Verify';
+import { LiveCoding } from './pages/live/LiveCoding';
+import { AdminCodingProblems } from './pages/admin/AdminCodingProblems';
 
 // Admin Pages
 import { AdminDashboard } from './pages/admin/AdminDashboard';
@@ -30,6 +32,7 @@ import { AdminEvents } from './pages/admin/AdminEvents';
 import { AdminQuestions } from './pages/admin/AdminQuestions';
 import { AdminParticipants } from './pages/admin/AdminParticipants';
 import { AdminUsers } from './pages/admin/AdminUsers';
+import { AdminSimulations } from './pages/admin/AdminSimulations';
 
 // ECE Hub Pages — Student
 import { EceHub } from './pages/ece/EceHub';
@@ -139,6 +142,7 @@ function App() {
             <Route path="/live/:id" element={<LiveEvent />} />
             <Route path="/results/:id" element={<Results />} />
             <Route path="/certificate/:id" element={<Certificate />} />
+            <Route path="/live-coding/:id" element={<LiveCoding />} />
           </Route>
 
           {/* Admin Protected Routes */}
@@ -148,6 +152,8 @@ function App() {
             <Route path="/admin/questions" element={<AdminQuestions />} />
             <Route path="/admin/participants" element={<AdminParticipants />} />
             <Route path="/admin/users" element={<AdminUsers />} />
+            <Route path="/admin/simulations" element={<AdminSimulations />} />
+            <Route path="/admin/coding-problems" element={<AdminCodingProblems />} />
           </Route>
 
           {/* ECE Hub — Public Routes */}

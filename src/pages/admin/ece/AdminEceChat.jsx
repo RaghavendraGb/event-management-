@@ -64,29 +64,26 @@ export function AdminEceChat() {
   return (
     <div className="max-w-4xl mx-auto px-4 py-6 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 flex items-center justify-center">
-            <MessageSquare className="w-5 h-5 text-emerald-400" />
-          </div>
-          <div>
-            <h1 className="text-xl font-black text-white">Chat Monitor</h1>
-            <p className="text-xs text-slate-500">{messages.length} messages</p>
-          </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 40 }}>
+        <div>
+          <h1 style={{ fontSize: 28, fontWeight: 800, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Intelligence Feed</h1>
+          <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginTop: 4 }}>Monitor real-time communication logs and administrative chat history.</p>
         </div>
         <button onClick={handleExportCSV}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-700 hover:bg-slate-600 text-slate-200 text-sm font-bold transition-colors">
-          <Download className="w-4 h-4" /> Export CSV
+          className="btn-ghost" style={{ padding: '10px 20px', background: 'var(--elevated)' }}>
+          <Download size={16} /> Data Export (CSV)
         </button>
       </div>
 
       {/* Search */}
-      <input
-        className="ece-input"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        placeholder="Search by sender or message…"
-      />
+      <div style={{ marginBottom: 24 }}>
+        <input
+          style={{ width: '100%', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '12px 20px', color: 'var(--text-primary)', fontSize: 14 }}
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Filter logs by operator / content…"
+        />
+      </div>
 
       {/* Messages */}
       {loading ? (
@@ -94,22 +91,24 @@ export function AdminEceChat() {
       ) : filtered.length === 0 ? (
         <div className="text-center py-12 text-slate-500 text-sm">No messages found.</div>
       ) : (
-        <div className="space-y-2">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {filtered.map((msg) => (
-            <div key={msg.id} className="flex items-start gap-3 p-3 rounded-xl border border-white/8 bg-slate-900/60 hover:bg-slate-900/80 transition-colors">
-              <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-xs font-bold text-slate-300 shrink-0 uppercase">
+            <div key={msg.id} style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '12px 20px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12 }}>
+              <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--elevated)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase', shrink: 0 }}>
                 {msg.sender_name?.charAt(0)}
               </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex flex-wrap items-baseline gap-2 mb-0.5">
-                  <span className="text-xs font-bold text-slate-300">{msg.sender_name}</span>
-                  <span className="text-[10px] text-slate-600">{formatTime(msg.created_at)}</span>
+              
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 2 }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>{msg.sender_name}</span>
+                  <span style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{formatTime(msg.created_at)}</span>
                 </div>
-                <p className="text-sm text-slate-400 leading-relaxed break-words">{msg.message}</p>
+                <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>{msg.message}</p>
               </div>
+
               <button onClick={() => handleDelete(msg.id)} disabled={deletingId === msg.id}
-                className="p-1.5 rounded-lg hover:bg-red-500/10 text-slate-600 hover:text-red-400 transition-colors shrink-0">
-                {deletingId === msg.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                className="btn-ghost" style={{ padding: 8, minHeight: 'unset', color: 'var(--red)', shrink: 0 }}>
+                {deletingId === msg.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
               </button>
             </div>
           ))}

@@ -41,7 +41,7 @@ export function Verify() {
       <div className="w-full max-w-2xl">
         <div className="text-center mb-10">
           <h1 className="text-3xl font-black text-white tracking-widest uppercase">Document Verification</h1>
-          <p className="text-slate-400 mt-2">Checking the global EventX cryptographic registry</p>
+          <p className="text-slate-400 mt-2">Checking the global Zentrix cryptographic registry</p>
         </div>
 
         {error ? (
@@ -100,7 +100,7 @@ export function Verify() {
         )}
 
         <div className="text-center mt-8">
-          <Link to="/" className="text-sm font-bold text-slate-500 hover:text-white transition-colors">Return to EventX</Link>
+          <Link to="/" className="text-sm font-bold text-slate-500 hover:text-white transition-colors">Return to Zentrix</Link>
         </div>
       </div>
     </div>

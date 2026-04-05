@@ -1,9 +1,9 @@
-# EventArena - Platform Architecture
+# Zentrix - Platform Architecture
 
-This document maps out the entire EventArena competition platform, detailing the engineering systems, database flow, and user experience flows we've constructed.
+This document maps out the entire Zentrix competition platform, detailing the engineering systems, database flow, and user experience flows we've constructed.
 
 ## Overview
-EventArena is a synchronized, offline-resilient, realtime-driven web application designed to host massive multiplayer college exams, treasure hunts, and rapid-fire quizzes without succumbing to bad Wi-Fi or cheating students.
+Zentrix is a synchronized, offline-resilient, realtime-driven web application designed to host massive multiplayer college exams, treasure hunts, and rapid-fire quizzes without succumbing to bad Wi-Fi or cheating students.
 
 ***
 

@@ -184,42 +184,44 @@ export function LiveLeaderboard({ eventId, currentUserId, limit = 10, isProjecto
   }, [activeEntries, tab, limit, mode]);
 
   return (
-    <div className={`flex flex-col h-full w-full ${isProjector ? 'p-8' : 'p-4'}`}>
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', padding: isProjector ? 32 : 16 }}>
       
       {/* Header Tabs */}
-      <div className="flex justify-between items-center mb-6 border-b border-white/10 pb-4 gap-2 flex-wrap">
-        <h2 className={`${isProjector ? 'text-4xl' : 'text-xl'} font-black text-white flex items-center gap-2 tracking-widest uppercase`}>
-          <Trophy className={`${isProjector ? 'w-8 h-8' : 'w-5 h-5'} text-amber-400`} /> 
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, paddingBottom: 16, borderBottom: '1px solid var(--border)', flexWrap: 'wrap', gap: 8 }}>
+        <h2 style={{ fontSize: isProjector ? 32 : 15, fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          <Trophy size={isProjector ? 24 : 16} style={{ color: 'var(--amber)' }} /> 
           Top {limit}
         </h2>
 
-        <div className="flex items-center gap-2">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {/* Feature 6: Live / Stable mode toggle */}
-          <div className="flex bg-slate-950 p-1 rounded-lg border border-slate-800">
+          <div className="tab-group">
             <button
               onClick={() => setMode('live')}
-              className={`px-3 py-1 text-xs font-bold rounded flex items-center gap-1 transition-all ${mode === 'live' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
+              className={`tab-btn ${mode === 'live' ? 'active' : ''}`}
+              style={{ fontSize: 11, padding: '4px 10px', height: 28 }}
             >
-              <Radio className="w-3 h-3" />
-              {mode === 'live' && <span className="relative flex h-1.5 w-1.5"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" /><span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-white" /></span>}
+              <Radio size={12} />
               Live
+              {mode === 'live' && <span className="live-dot" style={{ marginLeft: 4 }} />}
             </button>
             <button
               onClick={() => setMode('stable')}
-              className={`px-3 py-1 text-xs font-bold rounded flex items-center gap-1 transition-all ${mode === 'stable' ? 'bg-slate-700 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
+              className={`tab-btn ${mode === 'stable' ? 'active' : ''}`}
+              style={{ fontSize: 11, padding: '4px 10px', height: 28 }}
             >
-              <Clock className="w-3 h-3" />
+              <Clock size={12} />
               Stable
             </button>
           </div>
 
           {teamsEnabled && (
-            <div className="flex bg-slate-950 p-1 rounded-lg border border-slate-800">
-              <button onClick={() => setTab('solo')} className={`px-3 py-1 text-xs font-bold rounded flex items-center gap-1 transition-all ${tab === 'solo' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>
-                <User className="w-4 h-4"/>Solo
+            <div className="tab-group">
+              <button onClick={() => setTab('solo')} className={`tab-btn ${tab === 'solo' ? 'active' : ''}`} style={{ fontSize: 11, padding: '4px 10px', height: 28 }}>
+                <User size={12}/> Solo
               </button>
-              <button onClick={() => setTab('team')} className={`px-3 py-1 text-xs font-bold rounded flex items-center gap-1 transition-all ${tab === 'team' ? 'bg-purple-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>
-                <Users className="w-4 h-4"/>Teams
+              <button onClick={() => setTab('team')} className={`tab-btn ${tab === 'team' ? 'active' : ''}`} style={{ fontSize: 11, padding: '4px 10px', height: 28 }}>
+                <Users size={12}/> Teams
               </button>
             </div>
           )}
@@ -227,70 +229,83 @@ export function LiveLeaderboard({ eventId, currentUserId, limit = 10, isProjecto
       </div>
 
       {/* Roster */}
-      <div className="flex-1 relative">
-        <div className="space-y-3 relative w-full">
+      <div style={{ flex: 1, position: 'relative' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <AnimatePresence>
             {renderList.map((item, index) => (
               <motion.div
                 key={item.id || item.uniqueId || index}
                 layout
-                initial={{ opacity: 0, y: 50 }}
+                initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.9 }}
-                transition={{ duration: 0.4, type: 'spring', bounce: 0.3 }}
-                className={`flex items-center gap-4 w-full rounded-xl border p-3 ${
-                  item.isMe 
-                  ? 'bg-blue-600/20 border-blue-500/50 shadow-[0_0_20px_rgba(37,99,235,0.2)]' 
-                  : 'bg-slate-900 border-white/5 shadow-lg'
-                }`}
+                exit={{ opacity: 0, scale: 0.98 }}
+                transition={{ duration: 0.2 }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  padding: 10,
+                  background: item.isMe ? 'rgba(37,99,235,0.08)' : 'var(--surface)',
+                  border: `1px solid ${item.isMe ? 'rgba(37,99,235,0.25)' : 'var(--border)'}`,
+                  borderRadius: 6,
+                  position: 'relative'
+                }}
               >
                 {/* Rank Badge */}
-                <div className={`w-8 h-8 shrink-0 rounded-lg flex items-center justify-center font-black ${
-                  index === 0 ? 'bg-amber-500 text-amber-950 shadow-[0_0_15px_rgba(245,158,11,0.5)]' :
-                  index === 1 ? 'bg-slate-300 text-slate-800' :
-                  index === 2 ? 'bg-amber-700 text-amber-100' : 'bg-slate-800 text-slate-400'
-                }`}>
+                <div style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: 4,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 13,
+                  fontWeight: 800,
+                  flexShrink: 0,
+                  background: index === 0 ? 'var(--amber)' : index === 1 ? '#a1a1aa' : index === 2 ? '#b45309' : 'var(--elevated)',
+                  color: index === 0 ? '#000' : index === 1 ? '#000' : index === 2 ? '#fff' : 'var(--text-muted)'
+                }}>
                   {index + 1}
                 </div>
 
                 {/* Avatar */}
                 {tab === 'solo' && (
-                  <div className="w-8 h-8 rounded-full bg-slate-800 overflow-hidden shrink-0 border border-slate-700">
+                  <div className="avatar-circle" style={{ width: 28, height: 28, fontSize: 11, flexShrink: 0 }}>
                     {item.avatar 
-                      ? <img src={item.avatar} alt="Avatar" className="w-full h-full object-cover" />
-                      : <User className="w-full h-full p-1.5 text-slate-500" />
+                      ? <img src={item.avatar} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
+                      : (item.name?.charAt(0) || '?')
                     }
                   </div>
                 )}
                 {tab === 'team' && (
-                  <div className="w-8 h-8 shrink-0 flex items-center justify-center rounded-full bg-purple-500/20 text-purple-400 border border-purple-500/30">
-                    <Users className="w-4 h-4"/>
+                  <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'rgba(168,85,247,0.1)', border: '1px solid rgba(168,85,247,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <Users size={12} style={{ color: '#a855f7' }} />
                   </div>
                 )}
 
                 {/* Name */}
-                <div className="flex-1 min-w-0">
-                  <p className={`font-bold truncate ${item.isMe ? 'text-blue-400' : 'text-slate-200'} ${isProjector ? 'text-2xl' : 'text-sm'}`}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontSize: isProjector ? 20 : 13, fontWeight: 600, color: item.isMe ? 'var(--blue)' : 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {item.name}
                   </p>
-                  {tab === 'team' && <p className="text-xs text-purple-400">{item.members} Members</p>}
-                  {item.isMe && <p className="text-[10px] uppercase font-black tracking-widest text-blue-500 -mt-1">You</p>}
+                  {tab === 'team' && <p style={{ fontSize: 10, color: 'var(--text-muted)' }}>{item.members} members</p>}
+                  {item.isMe && <p style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--blue)', marginTop: -2 }}>You</p>}
                 </div>
 
                 {/* Score */}
-                <div className="text-right">
-                  <p className={`font-black tracking-wider ${isProjector ? 'text-4xl text-emerald-400' : 'text-xl text-emerald-400'}`}>
+                <div style={{ textAlign: 'right' }}>
+                  <p style={{ fontSize: isProjector ? 28 : 18, fontWeight: 800, color: 'var(--green)', letterSpacing: '0.04em' }}>
                     {item.score}
                   </p>
-                  {isProjector && <p className="text-xs uppercase text-slate-500 font-bold tracking-widest mt-[-2px]">Score</p>}
+                  {isProjector && <p style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>PTS</p>}
                 </div>
               </motion.div>
             ))}
           </AnimatePresence>
 
           {renderList.length === 0 && (
-            <div className="text-center p-10 text-slate-500 border border-dashed border-slate-800 rounded-xl">
-              No participants on the board yet.
+            <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)', border: '1px dashed var(--border)', borderRadius: 8, fontSize: 13 }}>
+              No entries found
             </div>
           )}
         </div>

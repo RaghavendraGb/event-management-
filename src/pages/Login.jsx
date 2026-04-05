@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { ShieldAlert, Lock } from 'lucide-react';
+import { ShieldAlert } from 'lucide-react';
 
 export function Login() {
   const navigate = useNavigate();
@@ -35,7 +35,7 @@ export function Login() {
 
       if (profile && profile.status === 'pending') {
         await supabase.auth.signOut();
-        setErrorMsg('⏳ Your account is pending admin approval. Please wait for an administrator to activate your account.');
+        setErrorMsg('Your account is pending admin approval. Please wait for an administrator to activate your account.');
         setLoading(false);
         return;
       }
@@ -45,63 +45,90 @@ export function Login() {
   };
 
   return (
-    /* Full viewport centering, respects bottom nav on mobile */
-    <div className="flex flex-col items-center justify-center min-h-[75vh] px-4 py-8">
-      <div className="glass-card w-full max-w-sm sm:max-w-md p-6 sm:p-8">
-
-        {/* Icon header */}
-        <div className="flex flex-col items-center mb-6 text-center">
-          <div className="w-12 h-12 rounded-2xl bg-blue-600/20 border border-blue-500/30 flex items-center justify-center mb-4">
-            <Lock className="w-6 h-6 text-blue-400" />
-          </div>
-          <h2 className="text-2xl sm:text-3xl font-bold text-white">Welcome Back</h2>
-          <p className="text-sm text-slate-400 mt-1">Sign in to your account</p>
+    <div style={{
+      minHeight: '100dvh',
+      background: 'var(--bg)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: '2rem 1rem',
+    }}>
+      <div style={{
+        width: '100%',
+        maxWidth: 380,
+        background: 'var(--surface)',
+        border: '1px solid rgba(255,255,255,0.10)',
+        borderRadius: 12,
+        padding: 32,
+      }}>
+        {/* Brand */}
+        <div style={{ marginBottom: 24 }}>
+          <p style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>Zentrix</p>
+          <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>Sign in to continue</p>
         </div>
-        
+
+        {/* Error */}
         {errorMsg && (
-          <div className="mb-4 p-3 bg-red-500/20 border border-red-500/50 rounded-xl text-red-200 text-sm flex items-start gap-3">
-            <ShieldAlert className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
-            <span className="leading-relaxed">{errorMsg}</span>
+          <div style={{
+            background: 'rgba(239,68,68,0.10)',
+            border: '1px solid rgba(239,68,68,0.25)',
+            borderRadius: 6,
+            padding: '10px 12px',
+            marginBottom: 16,
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: 8,
+          }}>
+            <ShieldAlert size={14} style={{ color: 'var(--red)', flexShrink: 0, marginTop: 1 }} />
+            <span style={{ fontSize: 13, color: 'var(--red)', lineHeight: 1.5 }}>{errorMsg}</span>
           </div>
         )}
 
-        <form onSubmit={handleLogin} className="space-y-4">
+        <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1.5">Email Address</label>
-            <input 
-              type="email" 
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: 'var(--text-secondary)', marginBottom: 6 }}>
+              Email Address
+            </label>
+            <input
+              id="login-email"
+              type="email"
               required
               autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30 transition-all text-base" 
-              placeholder="you@college.edu" 
+              className="input"
+              placeholder="you@college.edu"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1.5">Password</label>
-            <input 
-              type="password" 
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: 'var(--text-secondary)', marginBottom: 6 }}>
+              Password
+            </label>
+            <input
+              id="login-password"
+              type="password"
               required
               autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30 transition-all text-base" 
-              placeholder="••••••••" 
+              className="input"
+              placeholder="••••••••"
             />
           </div>
-          <button 
-            type="submit" 
+          <button
+            type="submit"
+            id="login-submit"
             disabled={loading}
-            className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold mt-2 disabled:opacity-50 transition-all shadow-[0_0_20px_rgba(37,99,235,0.3)] hover:shadow-[0_0_30px_rgba(37,99,235,0.5)] active:scale-[0.98] text-base"
+            className="btn-primary"
+            style={{ width: '100%', justifyContent: 'center', padding: '9px 16px', marginTop: 4 }}
           >
             {loading ? 'Signing in...' : 'Sign In'}
           </button>
         </form>
 
-        <p className="mt-6 text-center text-slate-400 text-sm">
+        <p style={{ marginTop: 20, textAlign: 'center', fontSize: 13, color: 'var(--text-muted)' }}>
           Don't have an account?{' '}
-          <Link to="/signup" className="text-blue-400 hover:text-blue-300 font-medium">Sign up</Link>
+          <Link to="/signup" style={{ color: 'var(--blue)', textDecoration: 'none', fontWeight: 500 }}>Sign up</Link>
         </p>
       </div>
     </div>

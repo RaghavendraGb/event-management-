@@ -10,14 +10,23 @@ const TABS = ['all', 'pending', 'approved', 'rejected'];
 const TAB_LABELS = { all: 'All Users', pending: 'Pending Approval', approved: 'Approved', rejected: 'Rejected' };
 
 const ROLE_COLORS = {
-  admin: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
-  user:  'bg-slate-800 text-slate-400 border-slate-700',
+  admin: 'color: #a855f7; border-color: rgba(168,85,247,0.3); background: rgba(168,85,247,0.06);',
+  user:  'color: var(--text-muted); border-color: var(--border); background: var(--elevated);',
 };
 
 const STATUS_COLORS = {
-  pending:  'bg-amber-500/20 text-amber-400 border-amber-500/30',
-  approved: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
-  rejected: 'bg-red-500/20 text-red-400 border-red-500/30',
+  pending:  'color: var(--amber); border-color: rgba(245,158,11,0.3); background: rgba(245,158,11,0.06);',
+  approved: 'color: var(--green); border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.06);',
+  rejected: 'color: var(--red); border-color: rgba(239,68,68,0.3); background: rgba(239,68,68,0.06);',
+};
+
+const parseStyle = (str) => {
+  const obj = {};
+  str.split(';').forEach(pair => {
+    const [k, v] = pair.split(':');
+    if (k && v) obj[k.trim().replace(/-([a-z])/g, g => g[1].toUpperCase())] = v.trim();
+  });
+  return obj;
 };
 
 export function AdminUsers() {
@@ -116,210 +125,127 @@ export function AdminUsers() {
     <div className="p-6 md:p-10 max-w-7xl mx-auto space-y-8">
 
       {/* Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 32 }}>
         <div>
-          <h1 className="text-3xl font-black text-white uppercase tracking-widest flex items-center gap-3">
-            <Users className="w-8 h-8 text-purple-400" />
-            User Management
-          </h1>
-          <p className="text-slate-400 mt-1 text-sm">Approve new registrations, manage roles, and remove users.</p>
+          <h1 style={{ fontSize: 28, fontWeight: 800, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Personnel Control</h1>
+          <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginTop: 4 }}>Authorize registrations, audit permissions, and monitor active operators.</p>
         </div>
-        <button onClick={fetchUsers}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-bold transition-all border border-slate-700">
-          <RefreshCw className="w-4 h-4" /> Refresh
+        <button onClick={fetchUsers} className="btn-ghost" style={{ padding: '10px 20px', background: 'var(--elevated)' }}>
+          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Synchronize
         </button>
       </div>
 
       {/* Pending Alert Banner */}
       {pendingCount > 0 && (
-        <div className="flex items-center gap-4 p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl">
-          <Clock className="w-6 h-6 text-amber-400 shrink-0 animate-pulse" />
-          <div>
-            <p className="text-amber-400 font-black text-sm uppercase tracking-wider">
-              {pendingCount} Registration{pendingCount > 1 ? 's' : ''} Awaiting Approval
+        <div style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.2)', padding: 16, borderRadius: 12, display: 'flex', alignItems: 'center', gap: 16 }}>
+          <Clock size={20} style={{ color: 'var(--amber)' }} className="animate-pulse" />
+          <div style={{ flex: 1 }}>
+            <p style={{ fontSize: 12, fontWeight: 800, color: 'var(--amber)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              {pendingCount} Registration Action Required
             </p>
-            <p className="text-amber-300/70 text-xs mt-0.5">Review and approve users below so they can log in.</p>
+            <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>Authenticate and approve personnel identities before system access is granted.</p>
           </div>
-          <button onClick={() => setTab('pending')}
-            className="ml-auto px-4 py-1.5 bg-amber-500 hover:bg-amber-400 text-amber-950 text-xs font-black uppercase rounded-lg transition-all shrink-0">
-            Review Now
+          <button onClick={() => setTab('pending')} className="btn-primary" style={{ padding: '8px 16px', background: 'var(--amber)', color: '#000', fontSize: 11 }}>
+            Resolve Now
           </button>
         </div>
       )}
 
       {/* Tabs + Search */}
-      <div className="flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
-        {/* Tab Pills */}
-        <div className="flex bg-slate-900 p-1 rounded-xl border border-slate-800 gap-1">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 20 }}>
+        <div style={{ display: 'flex', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, padding: 4, gap: 4 }}>
           {TABS.map(t => (
             <button key={t} onClick={() => setTab(t)}
-              className={`px-4 py-1.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all flex items-center gap-1.5 ${
-                tab === t ? 'bg-purple-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'
-              }`}>
-              {t === 'pending' && pendingCount > 0 && (
-                <span className="w-4 h-4 bg-amber-500 text-amber-950 rounded-full text-[9px] flex items-center justify-center font-black">
-                  {pendingCount}
-                </span>
-              )}
+              style={{
+                padding: '8px 16px', borderRadius: 6, fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', transition: 'all 0.2s',
+                background: tab === t ? 'var(--blue)' : 'transparent',
+                color: tab === t ? '#000' : 'var(--text-muted)',
+              }}>
+              {t === 'pending' && pendingCount > 0 && <span style={{ marginRight: 6, color: tab === t ? '#000' : 'var(--amber)' }}>●</span>}
               {TAB_LABELS[t]}
             </button>
           ))}
         </div>
 
-        {/* Search */}
-        <div className="flex items-center gap-3 bg-slate-900 border border-slate-800 rounded-xl px-4 py-2 w-full md:w-80">
-          <Search className="w-4 h-4 text-slate-500 shrink-0" />
+        <div style={{ flex: 1, maxWidth: 320, position: 'relative' }}>
+          <Search size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
           <input
-            type="text"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Search by name, email, college..."
-            className="bg-transparent text-white text-sm placeholder-slate-600 focus:outline-none flex-1"
+            type="text" value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Search by identity / email / entity…"
+            style={{ width: '100%', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px 10px 36px', color: 'var(--text-primary)', fontSize: 13 }}
           />
         </div>
       </div>
 
       {/* User Table */}
-      <div className="glass-card overflow-hidden">
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
         {loading ? (
-          <div className="flex justify-center py-20">
-            <div className="w-10 h-10 border-4 border-slate-800 border-t-purple-500 rounded-full animate-spin" />
+          <div style={{ padding: 64, display: 'flex', justifyContent: 'center' }}>
+            <div style={{ width: 32, height: 32, border: '3px solid var(--elevated)', borderTopColor: 'var(--blue)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left">
-              <thead className="bg-slate-900 border-b border-white/5">
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+              <thead style={{ background: 'var(--elevated)', borderBottom: '1px solid var(--border)' }}>
                 <tr>
-                  <th className="p-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">User</th>
-                  <th className="p-4 text-[10px] font-black text-slate-500 uppercase tracking-widest hidden md:table-cell">College</th>
-                  <th className="p-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">Status</th>
-                  <th className="p-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">Role</th>
-                  <th className="p-4 text-[10px] font-black text-slate-500 uppercase tracking-widest hidden lg:table-cell">Joined</th>
-                  <th className="p-4 text-[10px] font-black text-slate-500 uppercase tracking-widest text-right">Actions</th>
+                  <th style={{ padding: '12px 16px', fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Operator</th>
+                  <th style={{ padding: '12px 16px', fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>College / Entity</th>
+                  <th style={{ padding: '12px 16px', fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Security Status</th>
+                  <th style={{ padding: '12px 16px', fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>System Role</th>
+                  <th style={{ padding: '12px 16px', fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', textAlign: 'right' }}>Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/5">
+              <tbody style={{ fontSize: 13 }}>
                 {filtered.map(u => {
                   const isBusy = actionLoading === u.id;
                   return (
-                    <tr key={u.id} className="hover:bg-white/[0.02] transition-colors">
-
-                      {/* User info */}
-                      <td className="p-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center font-black text-sm text-white uppercase shrink-0">
+                    <tr key={u.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                      <td style={{ padding: '14px 16px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                          <div style={{ width: 32, height: 32, borderRadius: 6, background: 'var(--elevated)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, color: 'var(--text-secondary)' }}>
                             {u.name?.charAt(0) || '?'}
                           </div>
                           <div>
-                            <p className="text-white font-bold text-sm">{u.name || 'Unknown'}</p>
-                            <p className="text-slate-500 text-xs flex items-center gap-1">
-                              <Mail className="w-3 h-3" /> {u.email}
-                            </p>
+                            <p style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{u.name || 'Anonymous'}</p>
+                            <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>{u.email}</p>
                           </div>
                         </div>
                       </td>
-
-                      {/* College */}
-                      <td className="p-4 hidden md:table-cell">
-                        <p className="text-slate-400 text-sm flex items-center gap-1">
-                          <Building2 className="w-3.5 h-3.5 text-slate-600 shrink-0" />
-                          {u.college || <span className="text-slate-700 italic">Not set</span>}
-                        </p>
+                      <td style={{ padding: '14px 16px' }}>
+                         <p style={{ color: 'var(--text-secondary)', fontSize: 13 }}>{u.college || <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>Unspecified</span>}</p>
                       </td>
-
-                      {/* Status badge */}
-                      <td className="p-4">
-                        <span className={`text-[10px] px-2.5 py-1 rounded-full border font-black uppercase tracking-widest ${STATUS_COLORS[u.status] || STATUS_COLORS.pending}`}>
-                          {u.status === 'approved'
-                            ? <><CheckCircle2 className="inline w-3 h-3 mr-1" />Approved</>
-                            : u.status === 'rejected'
-                            ? <><UserX className="inline w-3 h-3 mr-1" />Rejected</>
-                            : <><Clock className="inline w-3 h-3 mr-1" />Pending</>
-                          }
+                      <td style={{ padding: '14px 16px' }}>
+                        <span style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', padding: '2px 8px', borderRadius: 4, border: '1px solid currentColor', ...parseStyle(STATUS_COLORS[u.status] || STATUS_COLORS.pending) }}>
+                          {u.status}
                         </span>
                       </td>
-
-                      {/* Role badge */}
-                      <td className="p-4">
-                        <span className={`text-[10px] px-2.5 py-1 rounded-full border font-black uppercase tracking-widest ${ROLE_COLORS[u.role] || ROLE_COLORS.user}`}>
-                          {u.role === 'admin' ? <><ShieldCheck className="inline w-3 h-3 mr-1" />Admin</> : 'User'}
+                      <td style={{ padding: '14px 16px' }}>
+                        <span style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', padding: '2px 8px', borderRadius: 4, border: '1px solid currentColor', ...parseStyle(ROLE_COLORS[u.role] || ROLE_COLORS.user) }}>
+                          {u.role}
                         </span>
                       </td>
-
-                      {/* Date */}
-                      <td className="p-4 hidden lg:table-cell text-slate-500 text-xs font-mono">
-                        {new Date(u.created_at).toLocaleDateString()}
-                      </td>
-
-                      {/* Actions */}
-                      <td className="p-4">
-                        <div className="flex items-center justify-end gap-2 flex-wrap">
-                          {/* Approve (only for pending) */}
+                      <td style={{ padding: '10px 16px', textAlign: 'right' }}>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
                           {u.status === 'pending' && (
-                            <button
-                              disabled={isBusy}
-                              onClick={() => approveUser(u.id)}
-                              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black rounded-lg transition-all disabled:opacity-50 shadow-[0_0_10px_rgba(16,185,129,0.3)]"
-                            >
-                              <UserCheck className="w-3.5 h-3.5" />
+                            <button onClick={() => approveUser(u.id)} disabled={isBusy} className="btn-primary" style={{ padding: '4px 10px', background: 'var(--green)', color: '#000', fontSize: 10 }}>
                               Approve
                             </button>
                           )}
-
-                          {/* J: Reject (soft-blocks login without hard delete) */}
-                          {u.status !== 'rejected' && (
-                            <button
-                              disabled={isBusy}
-                              onClick={() => rejectUser(u.id, u.name)}
-                              title="Reject — blocks login"
-                              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-black rounded-lg transition-all disabled:opacity-50 border bg-red-500/10 border-red-500/30 text-red-400 hover:bg-red-600 hover:text-white"
-                            >
-                              <UserX className="w-3.5 h-3.5" />
-                              Reject
-                            </button>
-                          )}
-
-                          {/* Toggle admin role */}
-                          <button
-                            disabled={isBusy}
-                            onClick={() => toggleRole(u.id, u.role)}
-                            title={u.role === 'admin' ? 'Revoke Admin' : 'Make Admin'}
-                            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-black rounded-lg transition-all disabled:opacity-50 border ${
-                              u.role === 'admin'
-                                ? 'bg-purple-500/10 border-purple-500/30 text-purple-400 hover:bg-red-500/10 hover:border-red-500/30 hover:text-red-400'
-                                : 'bg-slate-800 border-slate-700 text-slate-400 hover:border-purple-500/40 hover:text-purple-400'
-                            }`}
-                          >
-                            <Shield className="w-3.5 h-3.5" />
-                            {u.role === 'admin' ? 'Revoke Admin' : 'Make Admin'}
+                          <button onClick={() => toggleRole(u.id, u.role)} disabled={isBusy} className="btn-ghost" style={{ padding: '4px 8px', fontSize: 10, background: 'var(--elevated)' }}>
+                             {u.role === 'admin' ? 'Revoke Admin' : 'Make Admin'}
                           </button>
-
-                          {/* Hard Delete */}
-                          <button
-                            disabled={isBusy}
-                            onClick={() => removeUser(u.id, u.name)}
-                            title="Hard delete — removes all data"
-                            className="p-1.5 text-slate-600 hover:text-red-400 hover:bg-red-500/10 rounded-lg border border-transparent hover:border-red-500/20 transition-all disabled:opacity-50"
-                          >
-                            <Trash2 className="w-4 h-4" />
+                          <button onClick={() => removeUser(u.id, u.name)} disabled={isBusy} className="btn-ghost" style={{ padding: 4, minHeight: 'unset', color: 'var(--red)' }}>
+                            <Trash2 size={14} />
                           </button>
-
-                          {isBusy && (
-                            <div className="w-4 h-4 border-2 border-slate-700 border-t-white rounded-full animate-spin" />
-                          )}
                         </div>
                       </td>
                     </tr>
                   );
                 })}
-
                 {filtered.length === 0 && (
                   <tr>
-                    <td colSpan="6" className="p-12 text-center">
-                      <UserX className="w-12 h-12 text-slate-700 mx-auto mb-3" />
-                      <p className="text-slate-500 font-bold">
-                        {search ? `No users matching "${search}"` : `No ${tab === 'all' ? '' : tab} users found.`}
-                      </p>
+                    <td colSpan="5" style={{ padding: 48, textAlign: 'center', color: 'var(--text-muted)' }}>
+                      No matching records located in the personnel directory.
                     </td>
                   </tr>
                 )}
@@ -328,6 +254,7 @@ export function AdminUsers() {
           </div>
         )}
       </div>
+
 
       {/* Footer count */}
       {!loading && (

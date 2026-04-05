@@ -68,105 +68,106 @@ export function AdminStatusPanel({ eventId, totalQuestions }) {
   const getStatusBadge = (p) => {
     if (p.status === 'submitted') {
       return (
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-          <CheckCircle2 className="w-3 h-3" /> Completed
+        <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--green)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <CheckCircle2 size={12} /> Completed
         </span>
       );
     }
     if (p.violations >= 3) {
       return (
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest bg-red-500/20 text-red-400 border border-red-500/30">
-          <AlertTriangle className="w-3 h-3" /> Ejected
+        <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--red)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <AlertTriangle size={12} /> Ejected
         </span>
       );
     }
-    // answered === 0 and not submitted = registered but not started
     if (p.answered === 0) {
       return (
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest bg-slate-500/20 text-slate-400 border border-slate-500/30">
-          <Activity className="w-3 h-3" /> Not Started
+        <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <Activity size={12} /> Idle
         </span>
       );
     }
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest bg-blue-500/20 text-blue-400 border border-blue-500/30">
-        <Activity className="w-3 h-3" /> In Progress
+      <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--blue)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+        <Activity size={12} className="live-dot" style={{ animation: 'pulse 2s infinite' }} /> Active
       </span>
     );
   };
 
   if (loading) {
     return (
-      <div className="flex items-center gap-3 py-6 justify-center text-slate-500">
-        <div className="w-5 h-5 border-2 border-slate-700 border-t-blue-500 rounded-full animate-spin" />
-        Loading participant status...
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '24px 0', justifyContent: 'center', color: 'var(--text-muted)' }}>
+        <div style={{ width: 16, height: 16, border: '2px solid var(--elevated)', borderTopColor: 'var(--blue)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+        <span style={{ fontSize: 13 }}>Syncing live participation...</span>
       </div>
     );
   }
 
   return (
-    <div className="space-y-4">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {/* Summary bar */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 12 }}>
         {[
-          { label: 'Total',       value: total,          color: 'text-white' },
-          { label: 'In Progress', value: active,         color: 'text-blue-400' },
-          { label: 'Completed',   value: submitted,      color: 'text-emerald-400' },
-          { label: 'Violations',  value: withViolations, color: 'text-red-400' },
+          { label: 'Total',       value: total,          color: 'var(--text-primary)' },
+          { label: 'In Progress', value: active,         color: 'var(--blue)' },
+          { label: 'Completed',   value: submitted,      color: 'var(--green)' },
+          { label: 'Violations',  value: withViolations, color: 'var(--red)' },
         ].map(({ label, value, color }) => (
-          <div key={label} className="bg-slate-900/60 border border-white/5 rounded-xl p-3 text-center">
-            <p className={`text-xl font-black ${color}`}>{value}</p>
-            <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">{label}</p>
+          <div key={label} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, padding: 16, textAlign: 'center' }}>
+            <p style={{ fontSize: 24, fontWeight: 700, color }}>{value}</p>
+            <p style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700, marginTop: 4 }}>{label}</p>
           </div>
         ))}
       </div>
 
-      {/* Participant table */}
-      <div className="border border-white/5 rounded-xl overflow-hidden">
-        <div className="grid grid-cols-[1fr_auto_auto_auto] gap-2 px-4 py-2 bg-slate-950/60 text-[10px] font-black uppercase tracking-widest text-slate-500">
+      {/* Participant list */}
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px 80px 100px', gap: 12, padding: '12px 16px', background: 'var(--elevated)', borderBottom: '1px solid var(--border)', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-muted)' }}>
           <span>Participant</span>
-          <span className="text-center">Answered</span>
-          <span className="text-center">Violations</span>
-          <span className="text-center">Status</span>
+          <span style={{ textAlign: 'center' }}>Progress</span>
+          <span style={{ textAlign: 'center' }}>Strikes</span>
+          <span style={{ textAlign: 'right' }}>Status</span>
         </div>
 
-        <div className="divide-y divide-white/[0.04] max-h-72 overflow-y-auto">
+        <div style={{ maxHeight: 320, overflowY: 'auto' }}>
           {participants.length === 0 ? (
-            <div className="flex items-center gap-3 py-8 justify-center text-slate-500">
-              <Users className="w-5 h-5" />
-              No participants yet
+            <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+              No active participants
             </div>
           ) : (
             participants.map((p) => (
               <div
                 key={p.id}
-                className="grid grid-cols-[1fr_auto_auto_auto] gap-2 px-4 py-3 items-center hover:bg-slate-900/40 transition-colors"
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 80px 80px 100px',
+                  gap: 12,
+                  padding: '12px 16px',
+                  alignItems: 'center',
+                  borderBottom: '1px solid var(--border)'
+                }}
               >
-                <span className="text-sm font-medium text-slate-200 truncate">{p.name}</span>
+                <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</span>
 
-                <span className="text-sm font-bold text-center min-w-[48px]">
-                  <span className={p.answered === totalQuestions ? 'text-emerald-400' : 'text-slate-300'}>
-                    {p.answered}
-                  </span>
-                  <span className="text-slate-600">/{totalQuestions || '?'}</span>
+                <span style={{ fontSize: 13, fontWeight: 700, textAlign: 'center' }}>
+                  <span style={{ color: p.answered === totalQuestions ? 'var(--green)' : 'var(--text-primary)' }}>{p.answered}</span>
+                  <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>/{totalQuestions || '?'}</span>
                 </span>
 
-                <span className={`text-sm font-bold text-center min-w-[32px] ${
-                  p.violations >= 3 ? 'text-red-400' : p.violations > 0 ? 'text-amber-400' : 'text-slate-500'
-                }`}>
+                <span style={{ fontSize: 13, fontWeight: 700, textAlign: 'center', color: p.violations >= 3 ? 'var(--red)' : p.violations > 0 ? 'var(--amber)' : 'var(--text-muted)' }}>
                   {p.violations > 0 ? `⚠ ${p.violations}` : '—'}
                 </span>
 
-                <div className="min-w-[90px] text-right">{getStatusBadge(p)}</div>
+                <div style={{ textAlign: 'right' }}>{getStatusBadge(p)}</div>
               </div>
             ))
           )}
         </div>
       </div>
 
-      <div className="flex items-center gap-2 text-xs text-slate-600">
-        <Activity className="w-3.5 h-3.5 text-emerald-500" />
-        Live updates via Supabase realtime
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: 'var(--text-muted)', padding: '0 4px' }}>
+        <Activity size={14} style={{ color: 'var(--green)' }} />
+        Live stream active via Supabase Realtime
       </div>
     </div>
   );

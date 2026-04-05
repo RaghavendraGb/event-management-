@@ -15,9 +15,18 @@ export function AdminEceNotices() {
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
 
+  const Label = ({ children }) => (
+    <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
+      {children}
+    </label>
+  );
+
   const loadNotices = () => {
     supabase.from('ece_notices').select('*').order('created_at', { ascending: false })
-      .then(({ data }) => { setNotices(data || []); setLoading(false); });
+      .then(({ data }) => {
+        setNotices(data || []);
+        setLoading(false);
+      });
   };
 
   useEffect(() => { loadNotices(); }, []);
@@ -66,91 +75,107 @@ export function AdminEceNotices() {
   const typeColor = { info: '#3b82f6', urgent: '#ef4444', exam: '#f59e0b', lab: '#8b5cf6', event: '#10b981' };
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
+    <div className="max-w-4xl mx-auto px-4 py-8 space-y-8">
       {/* Header */}
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-amber-500/20 flex items-center justify-center">
-            <Bell className="w-5 h-5 text-amber-400" />
-          </div>
-          <h1 className="text-xl font-black text-white">Manage Notices</h1>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <h1 style={{ fontSize: 28, fontWeight: 900, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.1em', margin: 0 }}>Bulletin Control</h1>
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>Broadcast urgent announcements and academic schedules.</p>
         </div>
         <button onClick={() => { setShowForm(!showForm); setForm(EMPTY_FORM); setEditId(null); }}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-sm font-bold transition-colors">
-          <Plus className="w-4 h-4" /> Add Notice
+          className="btn-primary" style={{ padding: '10px 20px', fontSize: 11, fontWeight: 700, textTransform: 'uppercase' }}>
+          <Plus size={16} /> New Broadcast
         </button>
       </div>
 
-      {/* Form */}
+      {/* Form Section */}
       {showForm && (
-        <form onSubmit={handleSubmit} className="p-5 rounded-2xl border border-white/10 bg-slate-900/60 space-y-4">
-          <h2 className="text-sm font-bold text-slate-200">{editId ? 'Edit Notice' : 'New Notice'}</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: 32, animation: 'fadeIn 0.2s ease-out' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 32 }}>
             <div>
-              <label className="admin-label">Title *</label>
-              <input className="ece-input" value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} required placeholder="Notice title…" />
+              <h2 style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>{editId ? 'Architecting Notice' : 'Initialize Broadcast'}</h2>
+              <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>Configure headline and operational visibility.</p>
             </div>
-            <div>
-              <label className="admin-label">Type</label>
-              <select className="ece-select" value={form.type} onChange={(e) => setForm((f) => ({ ...f, type: e.target.value }))}>
-                {TYPES.map((t) => <option key={t} value={t}>{t.toUpperCase()}</option>)}
-              </select>
-            </div>
-          </div>
-          <div>
-            <label className="admin-label">Content *</label>
-            <textarea className="ece-textarea" value={form.content} onChange={(e) => setForm((f) => ({ ...f, content: e.target.value }))} required rows={4} placeholder="Notice content…" />
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="admin-label">Expires At (optional)</label>
-              <input type="date" className="ece-input" value={form.expires_at} onChange={(e) => setForm((f) => ({ ...f, expires_at: e.target.value }))} />
-            </div>
-            <div className="flex items-center gap-3 pt-5">
-              <input type="checkbox" id="noticeActive" checked={form.is_active} onChange={(e) => setForm((f) => ({ ...f, is_active: e.target.checked }))} className="w-4 h-4" />
-              <label htmlFor="noticeActive" className="text-sm text-slate-300">Active (visible to students)</label>
-            </div>
-          </div>
-          <div className="flex gap-3">
-            <button type="submit" disabled={saving} className="ece-btn-primary flex items-center gap-2">
-              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-              {editId ? 'Update' : 'Post'}
-            </button>
-            <button type="button" onClick={() => { setShowForm(false); setEditId(null); }} className="ece-btn-secondary flex items-center gap-2">
-              <X className="w-4 h-4" /> Cancel
+            <button type="button" onClick={() => { setShowForm(false); setEditId(null); }} className="btn-ghost" style={{ padding: 8, minHeight: 'unset' }}>
+              <X size={20} />
             </button>
           </div>
-        </form>
-      )}
 
-      {/* Notices list */}
-      {loading ? (
-        <div className="flex justify-center py-12"><Loader2 className="w-7 h-7 animate-spin text-slate-500" /></div>
-      ) : notices.length === 0 ? (
-        <div className="text-center py-12 text-slate-500 text-sm">No notices yet.</div>
-      ) : (
-        <div className="space-y-3">
-          {notices.map((notice) => (
-            <div key={notice.id} className={`relative ${!notice.is_active ? 'opacity-50' : ''}`}>
-              <NoticeCard notice={notice} />
-              {/* Admin actions overlay */}
-              <div className="absolute top-3 right-3 flex gap-1">
-                <button onClick={() => toggleActive(notice)} title={notice.is_active ? 'Deactivate' : 'Activate'}
-                  className="p-1.5 rounded-lg bg-slate-800/90 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors">
-                  {notice.is_active ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                </button>
-                <button onClick={() => handleEdit(notice)} className="p-1.5 rounded-lg bg-slate-800/90 hover:bg-slate-700 text-slate-400 hover:text-amber-400 transition-colors">
-                  <Pencil className="w-3.5 h-3.5" />
-                </button>
-                <button onClick={() => handleDelete(notice.id)} disabled={deletingId === notice.id}
-                  className="p-1.5 rounded-lg bg-slate-800/90 hover:bg-red-500/20 text-slate-400 hover:text-red-400 transition-colors">
-                  {deletingId === notice.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-                </button>
+          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 20 }}>
+              <div>
+                <Label>Notice Headline *</Label>
+                <input required className="input" value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} placeholder="Brief but descriptive title…" />
+              </div>
+              <div>
+                <Label>Notice Category</Label>
+                <select className="select" value={form.type} onChange={(e) => setForm((f) => ({ ...f, type: e.target.value }))}>
+                  {TYPES.map((t) => <option key={t} value={t}>{t.toUpperCase()}</option>)}
+                </select>
               </div>
             </div>
-          ))}
+
+            <div>
+              <Label>Detailed Message Content *</Label>
+              <textarea required className="input" style={{ resize: 'none' }} value={form.content} onChange={(e) => setForm((f) => ({ ...f, content: e.target.value }))} rows={4} placeholder="Full announcement detail and instructions…" />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+              <div>
+                <Label>Automatic Expiry Date</Label>
+                <input type="date" className="input" value={form.expires_at} onChange={(e) => setForm((f) => ({ ...f, expires_at: e.target.value }))} />
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, paddingTop: 20 }}>
+                <input type="checkbox" id="noticeActive" checked={form.is_active} onChange={(e) => setForm((f) => ({ ...f, is_active: e.target.checked }))} style={{ width: 18, height: 18, cursor: 'pointer' }} />
+                <label htmlFor="noticeActive" style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-secondary)', cursor: 'pointer' }}>Immediate Broadcast (Public Visibility)</label>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 12, borderTop: '1px solid var(--border)', paddingTop: 24, justifyContent: 'flex-end' }}>
+              <button onClick={() => { setShowForm(false); setEditId(null); }} type="button" className="btn-ghost" style={{ padding: '10px 24px' }}>Discard</button>
+              <button type="submit" disabled={saving} className="btn-primary" style={{ padding: '10px 32px' }}>
+                {saving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />} 
+                {editId ? 'Verify & Update Bulletin' : 'Publish to Feed'}
+              </button>
+            </div>
+          </form>
         </div>
       )}
+
+      {/* Announcements registry */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <h3 style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Historical Bulletin Registry</h3>
+        {loading ? (
+          <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-slate-500" /></div>
+        ) : notices.length === 0 ? (
+          <div style={{ textAlign: 'center', py: 64, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: 48 }}>
+            <Bell size={32} style={{ color: 'var(--text-muted)', marginBottom: 12, opacity: 0.3 }} />
+            <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>No notices archived. Bulletin feed is currently clear.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-4">
+            {notices.map((notice) => (
+              <div key={notice.id} style={{ position: 'relative', transition: 'transform 0.2s' }} onMouseOver={(e) => e.currentTarget.style.transform = 'translateX(4px)'} onMouseOut={(e) => e.currentTarget.style.transform = 'translateX(0)'}>
+                <div style={{ opacity: notice.is_active ? 1 : 0.5 }}>
+                  <NoticeCard notice={notice} />
+                </div>
+                {/* Admin actions overlay */}
+                <div style={{ position: 'absolute', top: 12, right: 12, display: 'flex', gap: 6 }}>
+                  <button onClick={() => toggleActive(notice)} className="btn-ghost" style={{ padding: 8, minHeight: 'unset', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 10 }} title={notice.is_active ? 'Hide Bulletin' : 'Show Bulletin'}>
+                    {notice.is_active ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                  <button onClick={() => handleEdit(notice)} className="btn-ghost" style={{ padding: 8, minHeight: 'unset', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 10 }} title="Edit">
+                    <Pencil size={16} />
+                  </button>
+                  <button onClick={() => handleDelete(notice.id)} disabled={deletingId === notice.id} className="btn-ghost" style={{ padding: 8, minHeight: 'unset', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 10, color: 'var(--red)' }} title="Delete">
+                    {deletingId === notice.id ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

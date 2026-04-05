@@ -8,14 +8,19 @@ import {
 } from 'lucide-react';
 
 const DIFFICULTY_COLORS = {
-  easy:   'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
-  medium: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
-  hard:   'bg-red-500/20 text-red-400 border-red-500/30',
+  easy:   'color: var(--green); border-color: rgba(16,185,129,0.2); background: rgba(16,185,129,0.05);',
+  medium: 'color: var(--amber); border-color: rgba(245,158,11,0.2); background: rgba(245,158,11,0.05);',
+  hard:   'color: var(--red);   border-color: rgba(239,68,68,0.2);   background: rgba(239,68,68,0.05);',
 };
 
 const EMPTY_FORM = {
   question: '', optA: '', optB: '', optC: '', optD: '',
-  correct: 'A', difficulty: 'medium', explanation: ''
+  correct: 'A', difficulty: 'medium', explanation: '',
+  question_type: 'mcq',
+  wokwi_url: '',
+  sim_instructions: '',
+  sim_expected_output: '',
+  sim_marks: 10,
 };
 
 export function AdminQuestions() {
@@ -31,15 +36,30 @@ export function AdminQuestions() {
   const [filterDiff, setFilterDiff]       = useState('all');
 
   // Edit / View modal
-  const [editing, setEditing]             = useState(null);   // question object | null
-  const [viewing, setViewing]             = useState(null);   // question object | null
+  const [editing, setEditing]             = useState(null);
+  const [viewing, setViewing]             = useState(null);
   const [editForm, setEditForm]           = useState(EMPTY_FORM);
 
-  // Create form
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [formData, setFormData]           = useState(EMPTY_FORM);
 
   const fileInputRef = useRef(null);
+
+  const parseStyle = (str) => {
+    const obj = {};
+    if (!str) return obj;
+    str.split(';').forEach(pair => {
+      const [k, v] = pair.split(':');
+      if (k && v) obj[k.trim().replace(/-([a-z])/g, g => g[1].toUpperCase())] = v.trim();
+    });
+    return obj;
+  };
+
+  const Label = ({ children }) => (
+    <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
+      {children}
+    </label>
+  );
 
   // ── Data Fetching ──────────────────────────────────────────
   const fetchData = useCallback(async () => {
@@ -78,16 +98,42 @@ export function AdminQuestions() {
   // ── Create ─────────────────────────────────────────────────
   const handleCreate = async (e) => {
     e.preventDefault();
-    const options = [formData.optA, formData.optB, formData.optC, formData.optD];
-    const correctValue = options[['A','B','C','D'].indexOf(formData.correct)];
-    const { error } = await supabase.from('question_bank').insert([{
-      question:      formData.question,
-      options,
-      correct_answer: correctValue,
-      difficulty:    formData.difficulty,
-      explanation:   formData.explanation,
-      created_by:    user.id
-    }]);
+    
+    let payload;
+    
+    if (formData.question_type === 'simulation') {
+      if (!formData.wokwi_url.trim()) {
+        alert('Wokwi embed URL is required for simulation questions.');
+        return;
+      }
+      payload = {
+        question: formData.question,
+        options: ['simulation'],
+        correct_answer: 'simulation',
+        difficulty: formData.difficulty,
+        explanation: formData.explanation || '',
+        question_type: 'simulation',
+        wokwi_url: formData.wokwi_url.trim(),
+        sim_instructions: formData.sim_instructions.trim(),
+        sim_expected_output: formData.sim_expected_output.trim(),
+        sim_marks: Number(formData.sim_marks) || 10,
+        created_by: user.id,
+      };
+    } else {
+      const options = [formData.optA, formData.optB, formData.optC, formData.optD];
+      const correctValue = options[['A','B','C','D'].indexOf(formData.correct)];
+      payload = {
+        question: formData.question,
+        options,
+        correct_answer: correctValue,
+        difficulty: formData.difficulty,
+        explanation: formData.explanation,
+        question_type: 'mcq',
+        created_by: user.id,
+      };
+    }
+    
+    const { error } = await supabase.from('question_bank').insert([payload]);
     if (!error) {
       setFormData(EMPTY_FORM);
       setShowCreateForm(false);
@@ -99,28 +145,58 @@ export function AdminQuestions() {
   const openEdit = (q) => {
     setEditing(q);
     setEditForm({
-      question:    q.question,
-      optA:        q.options[0] || '',
-      optB:        q.options[1] || '',
-      optC:        q.options[2] || '',
-      optD:        q.options[3] || '',
-      correct:     ['A','B','C','D'][q.options.indexOf(q.correct_answer)] || 'A',
-      difficulty:  q.difficulty,
-      explanation: q.explanation || ''
+      question: q.question,
+      optA: q.options?.[0] || '',
+      optB: q.options?.[1] || '',
+      optC: q.options?.[2] || '',
+      optD: q.options?.[3] || '',
+      correct: ['A','B','C','D'][q.options?.indexOf(q.correct_answer)] || 'A',
+      difficulty: q.difficulty,
+      explanation: q.explanation || '',
+      question_type: q.question_type || 'mcq',
+      wokwi_url: q.wokwi_url || '',
+      sim_instructions: q.sim_instructions || '',
+      sim_expected_output: q.sim_expected_output || '',
+      sim_marks: q.sim_marks || 10,
     });
   };
 
   const handleEditSave = async (e) => {
     e.preventDefault();
-    const options      = [editForm.optA, editForm.optB, editForm.optC, editForm.optD];
-    const correctValue = options[['A','B','C','D'].indexOf(editForm.correct)];
-    const { error } = await supabase.from('question_bank').update({
-      question:      editForm.question,
-      options,
-      correct_answer: correctValue,
-      difficulty:    editForm.difficulty,
-      explanation:   editForm.explanation,
-    }).eq('id', editing.id);
+    
+    let payload;
+    
+    if (editForm.question_type === 'simulation') {
+      if (!editForm.wokwi_url.trim()) {
+        alert('Wokwi embed URL is required for simulation questions.');
+        return;
+      }
+      payload = {
+        question: editForm.question,
+        options: ['simulation'],
+        correct_answer: 'simulation',
+        difficulty: editForm.difficulty,
+        explanation: editForm.explanation || '',
+        question_type: 'simulation',
+        wokwi_url: editForm.wokwi_url.trim(),
+        sim_instructions: editForm.sim_instructions.trim(),
+        sim_expected_output: editForm.sim_expected_output.trim(),
+        sim_marks: Number(editForm.sim_marks) || 10,
+      };
+    } else {
+      const options = [editForm.optA, editForm.optB, editForm.optC, editForm.optD];
+      const correctValue = options[['A','B','C','D'].indexOf(editForm.correct)];
+      payload = {
+        question: editForm.question,
+        options,
+        correct_answer: correctValue,
+        difficulty: editForm.difficulty,
+        explanation: editForm.explanation,
+        question_type: 'mcq',
+      };
+    }
+    
+    const { error } = await supabase.from('question_bank').update(payload).eq('id', editing.id);
     if (!error) { setEditing(null); fetchData(); }
     else alert(error.message);
   };
@@ -182,54 +258,124 @@ export function AdminQuestions() {
 
   // ── Question Form Fields ───────────────────────────────────
   const QuestionFields = ({ fd, setFd, submitLabel, onSubmit }) => (
-    <form onSubmit={onSubmit} className="space-y-3">
-      <textarea required placeholder="Question text..." rows={3}
-        className="w-full bg-slate-900 border border-white/10 rounded-lg p-3 text-sm text-white resize-none focus:outline-none focus:border-blue-500"
-        value={fd.question} onChange={e => setFd({...fd, question: e.target.value})} />
+    <form onSubmit={onSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {/* Question Type Toggle */}
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button type="button"
+          onClick={() => setFd({ ...fd, question_type: 'mcq' })}
+          className="btn-ghost"
+          style={{ 
+            flex: 1, 
+            fontSize: 11,
+            background: fd.question_type !== 'simulation' ? 'var(--blue)' : 'var(--elevated)',
+            color: fd.question_type !== 'simulation' ? '#fff' : 'var(--text-muted)'
+          }}>
+          MCQ Question
+        </button>
+        <button type="button"
+          onClick={() => setFd({ ...fd, question_type: 'simulation' })}
+          className="btn-ghost"
+          style={{ 
+            flex: 1, 
+            fontSize: 11,
+            background: fd.question_type === 'simulation' ? 'var(--blue)' : 'var(--elevated)',
+            color: fd.question_type === 'simulation' ? '#fff' : 'var(--text-muted)'
+          }}>
+          Simulation (Wokwi)
+        </button>
+      </div>
 
-      <div className="grid grid-cols-2 gap-2">
-        {['A','B','C','D'].map(letter => (
-          <div key={letter} className="relative">
-            <span className={`absolute left-3 top-1/2 -translate-y-1/2 text-xs font-black w-5 h-5 rounded flex items-center justify-center
-              ${fd.correct === letter ? 'bg-emerald-500 text-white' : 'bg-slate-700 text-slate-400'}`}>
-              {letter}
-            </span>
-            <input required placeholder={`Option ${letter}`}
-              className="w-full bg-slate-900 border border-white/10 rounded-lg pl-10 py-2.5 pr-3 text-sm text-white focus:outline-none focus:border-blue-500"
-              value={fd[`opt${letter}`]}
-              onChange={e => setFd({...fd, [`opt${letter}`]: e.target.value})}
-            />
+      <div>
+        <Label>{fd.question_type === 'simulation' ? "Simulation Title" : "Question Text"}</Label>
+        <textarea required rows={3}
+          style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: 12, color: 'var(--text-primary)', fontSize: 14, resize: 'none' }}
+          value={fd.question} onChange={e => setFd({...fd, question: e.target.value})} />
+      </div>
+
+      {fd.question_type !== 'simulation' && (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            {['A','B','C','D'].map(letter => (
+              <div key={letter}>
+                <Label>Option {letter}</Label>
+                <div style={{ position: 'relative' }}>
+                  <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 10, fontWeight: 900, color: fd.correct === letter ? 'var(--blue)' : 'var(--text-muted)' }}>{letter}</span>
+                  <input required placeholder={`Option ${letter}`}
+                    style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px 10px 32px', color: 'var(--text-primary)', fontSize: 13 }}
+                    value={fd[`opt${letter}`]}
+                    onChange={e => setFd({...fd, [`opt${letter}`]: e.target.value})}
+                  />
+                </div>
+              </div>
+            ))}
           </div>
-        ))}
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            <div>
+              <Label>Correct Answer</Label>
+              <select style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: 10, color: 'var(--text-primary)', fontSize: 13 }}
+                value={fd.correct} onChange={e => setFd({...fd, correct: e.target.value})}>
+                <option value="A">A</option><option value="B">B</option>
+                <option value="C">C</option><option value="D">D</option>
+              </select>
+            </div>
+            <div>
+              <Label>Difficulty</Label>
+              <select style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: 10, color: 'var(--text-primary)', fontSize: 13 }}
+                value={fd.difficulty} onChange={e => setFd({...fd, difficulty: e.target.value})}>
+                <option value="easy">Easy</option>
+                <option value="medium">Medium</option>
+                <option value="hard">Hard</option>
+              </select>
+            </div>
+          </div>
+        </>
+      )}
+
+      {fd.question_type === 'simulation' && (
+        <div style={{ padding: 16, background: 'rgba(59,130,246,0.03)', border: '1px solid var(--border)', borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div>
+            <Label>Wokwi Embed URL</Label>
+            <input required placeholder="https://wokwi.com/projects/..."
+              style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: 10, color: 'var(--text-primary)', fontSize: 13 }}
+              value={fd.wokwi_url}
+              onChange={e => setFd({ ...fd, wokwi_url: e.target.value })} />
+          </div>
+          
+          <div>
+            <Label>Instructions</Label>
+            <textarea rows={4} required
+              style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: 10, color: 'var(--text-primary)', fontSize: 13, resize: 'none' }}
+              value={fd.sim_instructions}
+              onChange={e => setFd({ ...fd, sim_instructions: e.target.value })} />
+          </div>
+          
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div>
+              <Label>Expected Output</Label>
+              <input style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: 10, color: 'var(--text-primary)', fontSize: 13 }}
+                value={fd.sim_expected_output}
+                onChange={e => setFd({ ...fd, sim_expected_output: e.target.value })} />
+            </div>
+            <div>
+              <Label>Marks</Label>
+              <input type="number"
+                style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: 10, color: 'var(--text-primary)', fontSize: 13 }}
+                value={fd.sim_marks}
+                onChange={e => setFd({ ...fd, sim_marks: e.target.value })} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div>
+        <Label>Explanation / Hint (Optional)</Label>
+        <input style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: 10, color: 'var(--text-primary)', fontSize: 13 }}
+          value={fd.explanation} onChange={e => setFd({...fd, explanation: e.target.value})} />
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Correct Answer</label>
-          <select className="w-full bg-slate-900 border border-white/10 rounded-lg p-2.5 text-white text-sm"
-            value={fd.correct} onChange={e => setFd({...fd, correct: e.target.value})}>
-            <option value="A">A</option><option value="B">B</option>
-            <option value="C">C</option><option value="D">D</option>
-          </select>
-        </div>
-        <div>
-          <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Difficulty</label>
-          <select className="w-full bg-slate-900 border border-white/10 rounded-lg p-2.5 text-white text-sm"
-            value={fd.difficulty} onChange={e => setFd({...fd, difficulty: e.target.value})}>
-            <option value="easy">Easy</option>
-            <option value="medium">Medium</option>
-            <option value="hard">Hard</option>
-          </select>
-        </div>
-      </div>
-
-      <input placeholder="Explanation / hint (optional)"
-        className="w-full bg-slate-900 border border-white/10 rounded-lg p-2.5 text-sm text-white focus:outline-none focus:border-blue-500"
-        value={fd.explanation} onChange={e => setFd({...fd, explanation: e.target.value})} />
-
-      <button type="submit"
-        className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-black uppercase text-sm tracking-widest rounded-lg transition-all">
-        <Save className="w-4 h-4 inline mr-2" />{submitLabel}
+      <button type="submit" className="btn-primary" style={{ padding: '12px 0', marginTop: 16 }}>
+        <Save size={16} /> {submitLabel}
       </button>
     </form>
   );
@@ -237,86 +383,95 @@ export function AdminQuestions() {
   const selectedEvent = events.find(e => e.id === selectedEventId);
 
   return (
-    <div className="p-6 md:p-10 max-w-7xl mx-auto">
-      <div className="flex justify-between items-start mb-8">
+    <div className="p-6 md:p-10 max-w-7xl mx-auto space-y-8 pb-20">
+      
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
-          <h1 className="text-3xl font-black text-white uppercase tracking-widest mb-1">Question Central</h1>
-          <p className="text-slate-400 text-sm">Build, edit, delete questions — then assign them to events.</p>
+          <h1 style={{ fontSize: 28, fontWeight: 900, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Asset Repository</h1>
+          <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginTop: 4 }}>Curate global assets and deploy them to specific competition environments.</p>
+        </div>
+        <div style={{ width: 48, height: 48, background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Database size={20} style={{ color: 'var(--blue)' }} />
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-3 border-b border-white/10 mb-8 pb-4">
+      <div style={{ display: 'flex', gap: 4, background: 'var(--elevated)', padding: 4, borderRadius: 12, border: '1px solid var(--border)', alignSelf: 'flex-start', width: 'fit-content' }}>
         <button onClick={() => setTab('bank')}
-          className={`font-bold px-5 py-2 rounded-xl transition-all flex items-center gap-2 text-sm
-            ${tab === 'bank' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}>
-          <Database className="w-4 h-4" /> Question Bank ({questions.length})
+          style={{ 
+            padding: '10px 20px', borderRadius: 10, fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em', transition: 'all 0.2s',
+            background: tab === 'bank' ? 'var(--surface)' : 'transparent',
+            color: tab === 'bank' ? 'var(--blue)' : 'var(--text-muted)',
+            border: tab === 'bank' ? '1px solid var(--border)' : '1px solid transparent'
+          }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Database size={14} /> Global Bank ({questions.length})
+          </span>
         </button>
         <button onClick={() => setTab('assign')}
-          className={`font-bold px-5 py-2 rounded-xl transition-all flex items-center gap-2 text-sm
-            ${tab === 'assign' ? 'bg-purple-600 text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}>
-          <ListChecks className="w-4 h-4" /> Assign to Event
+          style={{ 
+            padding: '10px 20px', borderRadius: 10, fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em', transition: 'all 0.2s',
+            background: tab === 'assign' ? 'var(--surface)' : 'transparent',
+            color: tab === 'assign' ? 'var(--blue)' : 'var(--text-muted)',
+            border: tab === 'assign' ? '1px solid var(--border)' : '1px solid transparent'
+          }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <ListChecks size={14} /> Protocol Assignment
+          </span>
         </button>
       </div>
 
       {/* ── BANK TAB ── */}
       {tab === 'bank' && (
-        <div className="space-y-6">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
 
           {/* Toolbar */}
-          <div className="flex flex-col md:flex-row gap-3 items-start md:items-center justify-between">
-            <div className="flex gap-3 flex-1 flex-wrap">
-              <div className="relative flex-1 min-w-[220px]">
-                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-                <input placeholder="Search questions..."
-                  className="w-full bg-slate-900 border border-white/10 rounded-lg pl-9 pr-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
-                  value={search} onChange={e => setSearch(e.target.value)} />
-              </div>
-              <div className="relative">
-                <Filter className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-                <select className="bg-slate-900 border border-white/10 rounded-lg pl-9 pr-3 py-2 text-sm text-white focus:outline-none"
-                  value={filterDiff} onChange={e => setFilterDiff(e.target.value)}>
-                  <option value="all">All Difficulty</option>
-                  <option value="easy">Easy</option>
-                  <option value="medium">Medium</option>
-                  <option value="hard">Hard</option>
-                </select>
-              </div>
+          <div style={{ display: 'flex', gap: 16, alignItems: 'center', background: 'var(--elevated)', padding: '16px 24px', borderRadius: 16, border: '1px solid var(--border)' }}>
+            <div style={{ position: 'relative', flex: 1 }}>
+              <Search size={14} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+              <input placeholder="Filter global assets..."
+                style={{ width: '100%', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 16px 10px 42px', color: 'var(--text-primary)', fontSize: 13 }}
+                value={search} onChange={e => setSearch(e.target.value)} />
             </div>
-            <div className="flex gap-2 shrink-0">
-              <button onClick={() => fileInputRef.current.click()}
-                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-black rounded-lg uppercase tracking-widest transition-all">
-                <Upload className="w-4 h-4" /> CSV Import
+            <select style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 16px', color: 'var(--text-primary)', fontSize: 12, fontWeight: 700 }}
+              value={filterDiff} onChange={e => setFilterDiff(e.target.value)}>
+              <option value="all">Complexity: All</option>
+              <option value="easy">Easy</option>
+              <option value="medium">Medium</option>
+              <option value="hard">Hard</option>
+            </select>
+            <div style={{ height: 24, width: 1, background: 'var(--border)' }} />
+            <div style={{ display: 'flex', gap: 12 }}>
+              <button onClick={() => fileInputRef.current.click()} className="btn-ghost" style={{ padding: '10px 16px', fontSize: 11 }}>
+                <Upload size={14} /> Import Protocol
               </button>
               <input type="file" accept=".csv" className="hidden" ref={fileInputRef} onChange={handleFileUpload} />
-              <button onClick={() => setShowCreateForm(f => !f)}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-black rounded-lg uppercase tracking-widest transition-all">
-                <Plus className="w-4 h-4" /> Add Question
+              <button onClick={() => setShowCreateForm(f => !f)} className="btn-primary" style={{ padding: '10px 20px', background: 'var(--blue)', color: '#000', fontSize: 11 }}>
+                <Plus size={14} /> Initialize Asset
               </button>
             </div>
           </div>
 
           {/* Create Form */}
           {showCreateForm && (
-            <div className="glass-card p-6 border-l-4 border-l-blue-500">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="font-black text-white flex items-center gap-2"><Plus className="w-4 h-4" /> New Question</h3>
-                <button onClick={() => setShowCreateForm(false)} className="text-slate-500 hover:text-white"><X className="w-5 h-5" /></button>
+            <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderLeft: '4px solid var(--blue)', borderRadius: 16, padding: 32 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 32 }}>
+                <h3 style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>New Asset Entry</h3>
+                <button onClick={() => setShowCreateForm(false)} style={{ color: 'var(--text-muted)' }} className="hover-white">
+                  <X size={20} />
+                </button>
               </div>
-              <QuestionFields fd={formData} setFd={setFormData} submitLabel="Add to Bank" onSubmit={handleCreate} />
+              <QuestionFields fd={formData} setFd={setFormData} submitLabel="Commit to Registry" onSubmit={handleCreate} />
             </div>
           )}
 
-          {/* CSV format hint */}
-          <p className="text-xs text-slate-600 font-mono">
-            CSV columns: question, option_a, option_b, option_c, option_d, correct (A/B/C/D), difficulty (easy/medium/hard), explanation
-          </p>
-
           {/* Question List */}
-          <div className="space-y-3">
+          <div style={{ display: 'grid', gap: 16 }}>
             {filtered.length === 0 && (
-              <div className="glass-card p-12 text-center text-slate-500">
-                {search || filterDiff !== 'all' ? 'No questions match your filter.' : 'No questions yet — add one above or import a CSV.'}
+              <div style={{ padding: 128, textAlign: 'center', background: 'var(--surface)', border: '1px solid var(--border)', borderStyle: 'dashed', borderRadius: 16 }}>
+                <Search size={48} style={{ color: 'var(--text-muted)', opacity: 0.2, margin: '0 auto 24px' }} />
+                <p style={{ color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', fontSize: 12 }}>Registry search yielded zero results.</p>
               </div>
             )}
             {filtered.map((q, idx) => (
@@ -332,138 +487,139 @@ export function AdminQuestions() {
 
       {/* ── ASSIGN TAB ── */}
       {tab === 'assign' && (
-        <div className="max-w-4xl space-y-6">
-          <div className="glass-card p-5 border-l-4 border-l-purple-500">
-            <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Select Event</label>
-            <select className="w-full bg-slate-900 border border-white/10 rounded-lg p-3 text-white font-bold"
-              value={selectedEventId} onChange={e => setSelectedEventId(e.target.value)}>
-              <option value="">-- Pick an event --</option>
-              {events.map(e => (
-                <option key={e.id} value={e.id}>{e.title} [{e.type.replace('_',' ')}] — {e.status}</option>
-              ))}
-            </select>
-            {selectedEvent && (
-              <p className="text-xs text-purple-400 font-bold mt-2 uppercase tracking-widest">
-                Mode: {selectedEvent.type.replace('_', ' ')}  •  {eventQuestions.length} questions assigned
-              </p>
+        <div style={{ display: 'grid', gridTemplateColumns: '360px 1fr', gap: 32, alignItems: 'flex-start' }}>
+          
+          {/* Left: Event Selection & Assigned List */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 24, position: 'sticky', top: 32 }}>
+            <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: 24 }}>
+               <Label>Target Protocol</Label>
+               <select style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 10, padding: 14, color: 'var(--text-primary)', fontWeight: 800, fontSize: 14 }}
+                value={selectedEventId} onChange={e => setSelectedEventId(e.target.value)}>
+                <option value="">-- Choose Environment --</option>
+                {events.map(e => (
+                  <option key={e.id} value={e.id}>{e.title}</option>
+                ))}
+              </select>
+              {selectedEvent && (
+                <div style={{ marginTop: 20, padding: '12px 16px', background: 'rgba(59,130,246,0.06)', borderRadius: 10, border: '1px solid rgba(59,130,246,0.2)' }}>
+                  <p style={{ fontSize: 10, fontWeight: 800, color: 'var(--blue)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Deployment Parameters</p>
+                  <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4 }}>Mode: {selectedEvent.type.replace('_', ' ')}</p>
+                  <p style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Lifecycle: {selectedEvent.status}</p>
+                </div>
+              )}
+            </div>
+
+            {selectedEventId && (
+              <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: 24 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                  <h3 style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                    Assigned Assets ({eventQuestions.length})
+                  </h3>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {eventQMeta.map((meta, i) => {
+                    const q = questions.find(q => q.id === meta.question_id);
+                    if (!q) return null;
+                    return (
+                      <div key={meta.id} style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'var(--elevated)', border: '1px solid var(--border)', padding: '10px 14px', borderRadius: 8 }}>
+                        <span style={{ width: 18, height: 18, borderRadius: 4, background: 'var(--surface)', color: 'var(--text-muted)', fontSize: 10, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{i+1}</span>
+                        <p style={{ flex: 1, fontSize: 12, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{q.question}</p>
+                        <button onClick={() => toggleEventQuestion(q.id)} style={{ color: 'var(--text-muted)' }} className="hover-red">
+                          <X size={14} />
+                        </button>
+                      </div>
+                    );
+                  })}
+                  {eventQuestions.length === 0 && <p style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic', textAlign: 'center', padding: 24, background: 'var(--elevated)', borderRadius: 12, border: '1px solid var(--border)', borderStyle: 'dashed' }}>Architecture unpopulated.</p>}
+                </div>
+              </div>
             )}
           </div>
 
-          {selectedEventId && (
-            <>
-              {/* Assigned Summary */}
-              {eventQuestions.length > 0 && (
-                <div className="glass-card p-4 border border-purple-500/20 bg-purple-900/5">
-                  <h3 className="text-xs font-black text-purple-400 uppercase tracking-widest mb-3">
-                    Assigned Questions ({eventQuestions.length}) — drag order coming soon
-                  </h3>
-                  <div className="space-y-2">
-                    {eventQMeta.map((meta, i) => {
-                      const q = questions.find(q => q.id === meta.question_id);
-                      if (!q) return null;
-                      return (
-                        <div key={meta.id} className="flex items-center gap-3 bg-slate-900 rounded-lg px-4 py-2.5 border border-purple-500/20">
-                          <span className="w-6 h-6 shrink-0 bg-purple-600 text-white text-xs font-black rounded flex items-center justify-center">{i+1}</span>
-                          <p className="text-sm text-white flex-1 truncate">{q.question}</p>
-                          <button onClick={() => toggleEventQuestion(q.id)}
-                            className="text-slate-500 hover:text-red-400 transition-colors ml-2" title="Remove from event">
-                            <X className="w-4 h-4" />
-                          </button>
-                        </div>
-                      );
-                    })}
+          {/* Right: Asset Bank Selector */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+            {!selectedEventId ? (
+              <div style={{ padding: 128, textAlign: 'center', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, borderStyle: 'dashed' }}>
+                <ListChecks size={48} style={{ color: 'var(--text-muted)', opacity: 0.2, margin: '0 auto 24px' }} />
+                <p style={{ color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', fontSize: 12 }}>Select a target protocol to begin assignment.</p>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                   <h3 style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Global Asset Inventory</h3>
+                   <div style={{ position: 'relative', width: 300 }}>
+                    <Search size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                    <input placeholder="Filter bank..."
+                      style={{ width: '100%', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px 8px 36px', color: 'var(--text-primary)', fontSize: 12 }}
+                      value={search} onChange={e => setSearch(e.target.value)} />
                   </div>
                 </div>
-              )}
 
-              {/* All Questions Selector */}
-              <div>
-                <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-2">
-                  All Bank Questions
-                  <span className="text-slate-700">— click to assign / unassign</span>
-                </h3>
-                {/* search within assign */}
-                <div className="relative mb-3">
-                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-                  <input placeholder="Filter questions..."
-                    className="w-full bg-slate-900 border border-white/10 rounded-lg pl-9 pr-3 py-2 text-sm text-white focus:outline-none focus:border-purple-500"
-                    value={search} onChange={e => setSearch(e.target.value)} />
-                </div>
-                <div className="space-y-2">
+                <div style={{ display: 'grid', gap: 12 }}>
                   {filtered.map(q => {
                     const assigned = eventQuestions.includes(q.id);
                     return (
                       <div key={q.id}
                         onClick={() => toggleEventQuestion(q.id)}
-                        className={`p-4 rounded-xl border flex items-center justify-between cursor-pointer transition-all
-                          ${assigned
-                            ? 'bg-purple-900/20 border-purple-500 shadow-[0_0_15px_rgba(168,85,247,0.15)]'
-                            : 'bg-slate-900/50 border-white/5 hover:border-slate-600'}`}>
-                        <div className="flex items-center gap-3 flex-1 min-w-0">
-                          <span className={`text-[10px] px-2 py-0.5 rounded border font-black uppercase ${DIFFICULTY_COLORS[q.difficulty]}`}>
-                            {q.difficulty}
-                          </span>
-                          <p className={`text-sm font-bold truncate ${assigned ? 'text-white' : 'text-slate-400'}`}>{q.question}</p>
+                        style={{
+                          padding: '16px 24px', borderRadius: 12, border: '1px solid var(--border)', background: assigned ? 'rgba(59,130,246,0.06)' : 'var(--surface)',
+                          borderColor: assigned ? 'var(--blue)' : 'var(--border)', cursor: 'pointer', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: 20
+                        }}
+                        className={assigned ? '' : 'hover-elevated'}
+                      >
+                        <div style={{ width: 24, height: 24, borderRadius: 6, border: '2px solid var(--border)', background: assigned ? 'var(--blue)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          {assigned && <Check size={14} style={{ color: '#000' }} />}
                         </div>
-                        <div className={`w-6 h-6 shrink-0 rounded-full border-2 flex items-center justify-center ml-4
-                          ${assigned ? 'bg-purple-500 border-purple-400 text-white' : 'border-slate-700'}`}>
-                          {assigned && <Check className="w-3.5 h-3.5" />}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <p style={{ fontSize: 14, fontWeight: 700, color: assigned ? 'var(--text-primary)' : 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{q.question}</p>
+                          <div style={{ display: 'flex', gap: 12, marginTop: 4 }}>
+                            <span style={{ fontSize: 9, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{q.difficulty}</span>
+                            <span style={{ fontSize: 9, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{q.question_type}</span>
+                          </div>
                         </div>
                       </div>
                     );
                   })}
-                  {filtered.length === 0 && (
-                    <div className="text-center p-8 text-slate-500 border border-dashed border-slate-800 rounded-xl">
-                      No questions in bank yet. Add some in the Question Bank tab.
-                    </div>
-                  )}
                 </div>
               </div>
-            </>
-          )}
+            )}
+          </div>
         </div>
       )}
 
       {/* ── Edit Modal ── */}
       {editing && (
-        <Modal title={`Edit Question`} onClose={() => setEditing(null)} wide>
-          <QuestionFields fd={editForm} setFd={setEditForm} submitLabel="Save Changes" onSubmit={handleEditSave} />
+        <Modal title={`Modify Asset Entry`} onClose={() => setEditing(null)} wide>
+          <QuestionFields fd={editForm} setFd={setEditForm} submitLabel="Commit Changes" onSubmit={handleEditSave} />
         </Modal>
       )}
 
       {/* ── View Modal ── */}
       {viewing && (
-        <Modal title="Question Detail" onClose={() => setViewing(null)}>
-          <div className="space-y-4">
-            <p className="text-white font-bold text-lg leading-relaxed">{viewing.question}</p>
-            <div className="grid grid-cols-2 gap-2">
+        <Modal title="Asset Technical Analysis" onClose={() => setViewing(null)}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+            <p style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-primary)', lineHeight: 1.5 }}>{viewing.question}</p>
+            
+            <div style={{ display: 'grid', gap: 10 }}>
               {viewing.options.map((opt, i) => (
-                <div key={i} className={`p-3 rounded-lg border text-sm font-medium flex items-center gap-2
-                  ${opt === viewing.correct_answer ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300' : 'bg-slate-900 border-slate-700 text-slate-400'}`}>
-                  <span className={`w-5 h-5 rounded text-xs font-black flex items-center justify-center shrink-0
-                    ${opt === viewing.correct_answer ? 'bg-emerald-500 text-white' : 'bg-slate-700 text-slate-400'}`}>
-                    {['A','B','C','D'][i]}
-                  </span>
-                  {opt}
-                  {opt === viewing.correct_answer && <Check className="w-4 h-4 ml-auto text-emerald-400" />}
+                <div key={i} style={{ padding: 16, borderRadius: 10, border: '1px solid var(--border)', background: opt === viewing.correct_answer ? 'rgba(16,185,129,0.06)' : 'var(--elevated)', display: 'flex', alignItems: 'center', gap: 16 }}>
+                  <span style={{ width: 24, height: 24, borderRadius: 6, background: opt === viewing.correct_answer ? 'var(--green)' : 'var(--surface)', fontSize: 10, fontWeight: 900, color: opt === viewing.correct_answer ? '#000' : 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{['A','B','C','D'][i]}</span>
+                  <span style={{ fontSize: 14, color: opt === viewing.correct_answer ? 'var(--green)' : 'var(--text-primary)', fontWeight: opt === viewing.correct_answer ? 700 : 400 }}>{opt}</span>
+                  {opt === viewing.correct_answer && <CheckCircle2 size={16} style={{ marginLeft: 'auto', color: 'var(--green)' }} />}
                 </div>
               ))}
             </div>
+
             {viewing.explanation && (
-              <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3">
-                <p className="text-xs font-black text-amber-400 uppercase tracking-widest mb-1">Explanation</p>
-                <p className="text-amber-200/80 text-sm">{viewing.explanation}</p>
+              <div style={{ padding: 20, background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 12 }}>
+                <Label>Supplemental Logic / Explanation</Label>
+                <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>{viewing.explanation}</p>
               </div>
             )}
-            <div className="flex gap-2 pt-2">
-              <span className={`text-xs px-3 py-1 rounded-full border font-black uppercase ${DIFFICULTY_COLORS[viewing.difficulty]}`}>
-                {viewing.difficulty}
-              </span>
-            </div>
-            <div className="flex gap-3 pt-2 border-t border-white/5">
-              <button onClick={() => { setViewing(null); openEdit(viewing); }}
-                className="flex-1 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg flex items-center justify-center gap-2 text-sm">
-                <Pencil className="w-4 h-4" /> Edit This Question
+
+            <div style={{ display: 'flex', gap: 12, paddingTop: 32, borderTop: '1px solid var(--border)' }}>
+              <button onClick={() => { setViewing(null); openEdit(viewing); }} className="btn-primary" style={{ flex: 1, padding: '12px', background: 'var(--blue)', color: '#000' }}>
+                Access Record Controller
               </button>
             </div>
           </div>
@@ -476,59 +632,67 @@ export function AdminQuestions() {
 // ── Question Card ──────────────────────────────────────────
 function QuestionCard({ q, idx, onEdit, onView, onDelete }) {
   const [expanded, setExpanded] = useState(false);
+  
+  const parseStyle = (str) => {
+    const obj = {};
+    if (!str) return obj;
+    str.split(';').forEach(pair => {
+      const [k, v] = pair.split(':');
+      if (k && v) obj[k.trim().replace(/-([a-z])/g, g => g[1].toUpperCase())] = v.trim();
+    });
+    return obj;
+  };
+
   return (
-    <div className="bg-slate-900/60 border border-white/5 rounded-xl overflow-hidden hover:border-slate-700 transition-all group">
-      <div className="p-4 flex items-start gap-4">
-        <span className="shrink-0 w-7 h-7 bg-slate-800 text-slate-400 text-xs font-black rounded flex items-center justify-center mt-0.5">
+    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+      <div style={{ padding: 16, display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+        <div style={{ width: 32, height: 32, borderRadius: 6, background: 'var(--elevated)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, color: 'var(--text-muted)', shrink: 0 }}>
           {idx + 1}
-        </span>
-        <div className="flex-1 min-w-0">
-          <p className="text-white font-semibold text-sm leading-relaxed line-clamp-2 group-hover:line-clamp-none transition-all">
-            {q.question}
-          </p>
-          <div className="flex items-center gap-2 mt-2 flex-wrap">
-            <span className={`text-[10px] px-2 py-0.5 rounded border font-black uppercase ${DIFFICULTY_COLORS[q.difficulty]}`}>
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 12, lineClamp: 2 }}>{q.question}</p>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <span style={{ fontSize: 9, fontWeight: 800, padding: '2px 8px', borderRadius: 4, border: '1px solid currentColor', textTransform: 'uppercase', letterSpacing: '0.04em', ...parseStyle(DIFFICULTY_COLORS[q.difficulty]) }}>
               {q.difficulty}
             </span>
-            <span className="text-[10px] text-slate-600 font-mono">{q.options.length} options</span>
-            {q.explanation && <span className="text-[10px] text-amber-600 font-bold">Has hint</span>}
+            {q.question_type === 'simulation' ? (
+               <span style={{ fontSize: 9, fontWeight: 800, padding: '2px 8px', borderRadius: 4, background: 'rgba(168,85,247,0.1)', color: '#a855f7', textTransform: 'uppercase' }}>
+                Simulation
+              </span>
+            ) : (
+              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{q.options.length} Options</span>
+            )}
           </div>
         </div>
-        <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-          <button onClick={onView} title="View"
-            className="p-1.5 text-slate-500 hover:text-blue-400 hover:bg-blue-500/10 rounded transition-all">
-            <Eye className="w-4 h-4" />
+        <div style={{ display: 'flex', gap: 4 }}>
+          <button onClick={onView} className="btn-ghost" style={{ padding: 8, minHeight: 'unset' }} title="View">
+            <Eye size={14} />
           </button>
-          <button onClick={onEdit} title="Edit"
-            className="p-1.5 text-slate-500 hover:text-amber-400 hover:bg-amber-500/10 rounded transition-all">
-            <Pencil className="w-4 h-4" />
+          <button onClick={onEdit} className="btn-ghost" style={{ padding: 8, minHeight: 'unset' }} title="Edit">
+            <Pencil size={14} />
           </button>
-          <button onClick={onDelete} title="Delete"
-            className="p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded transition-all">
-            <Trash2 className="w-4 h-4" />
+          <button onClick={onDelete} className="btn-ghost" style={{ padding: 8, minHeight: 'unset', color: 'var(--red)' }} title="Delete">
+            <Trash2 size={14} />
           </button>
-          <button onClick={() => setExpanded(f => !f)} title="Toggle options"
-            className="p-1.5 text-slate-500 hover:text-white hover:bg-slate-700 rounded transition-all">
-            {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          <button onClick={() => setExpanded(!expanded)} className="btn-ghost" style={{ padding: 8, minHeight: 'unset', background: expanded ? 'var(--blue)' : 'transparent' }}>
+            {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
           </button>
         </div>
       </div>
+
       {expanded && (
-        <div className="border-t border-white/5 px-4 pb-4 pt-3 grid grid-cols-2 gap-2 bg-slate-950/30">
+        <div style={{ padding: 20, background: 'var(--elevated)', borderTop: '1px solid var(--border)', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           {q.options.map((opt, i) => (
-            <div key={i} className={`flex items-center gap-2 p-2 rounded-lg text-sm border
-              ${opt === q.correct_answer ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' : 'bg-slate-900 border-slate-800 text-slate-400'}`}>
-              <span className={`w-5 h-5 rounded text-xs font-black flex items-center justify-center shrink-0
-                ${opt === q.correct_answer ? 'bg-emerald-500 text-white' : 'bg-slate-700 text-slate-500'}`}>
-                {['A','B','C','D'][i]}
-              </span>
-              {opt}
-              {opt === q.correct_answer && <Check className="w-3.5 h-3.5 text-emerald-400 ml-auto" />}
+            <div key={i} style={{ padding: 10, borderRadius: 6, border: '1px solid var(--border)', background: opt === q.correct_answer ? 'rgba(16,185,129,0.05)' : 'var(--surface)', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 10, fontWeight: 900, color: opt === q.correct_answer ? 'var(--green)' : 'var(--text-muted)' }}>{['A','B','C','D'][i]}</span>
+              <span style={{ fontSize: 12, color: opt === q.correct_answer ? 'var(--green)' : 'var(--text-primary)' }}>{opt}</span>
+              {opt === q.correct_answer && <Check size={12} style={{ marginLeft: 'auto', color: 'var(--green)' }} />}
             </div>
           ))}
           {q.explanation && (
-            <div className="col-span-2 mt-1 bg-amber-500/10 border border-amber-500/20 rounded-lg p-2 text-xs text-amber-200/80">
-              <span className="font-black text-amber-400 uppercase tracking-widest mr-2">Hint:</span>{q.explanation}
+            <div style={{ gridColumn: 'span 2', marginTop: 8, padding: 12, background: 'rgba(245,158,11,0.05)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 8, fontSize: 12 }}>
+              <span style={{ fontWeight: 800, color: 'var(--amber)', textTransform: 'uppercase', fontSize: 10, marginRight: 8 }}>Explain:</span>
+              <span style={{ color: 'var(--text-secondary)' }}>{q.explanation}</span>
             </div>
           )}
         </div>
@@ -540,18 +704,28 @@ function QuestionCard({ q, idx, onEdit, onView, onDelete }) {
 // ── Reusable Modal ────────────────────────────────────────
 function Modal({ title, onClose, children, wide }) {
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={onClose}>
       <div
-        className={`bg-slate-900 border border-white/10 rounded-2xl shadow-2xl w-full overflow-y-auto max-h-[90vh]
-          ${wide ? 'max-w-2xl' : 'max-w-lg'}`}
+        style={{
+          background: 'var(--surface)',
+          border: '1px solid var(--border)',
+          borderRadius: 16,
+          boxShadow: '0 24px 48px rgba(0,0,0,0.5)',
+          width: '100%',
+          maxWidth: wide ? 640 : 440,
+          maxHeight: '90vh',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden'
+        }}
         onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between p-5 border-b border-white/5">
-          <h2 className="font-black text-white text-lg">{title}</h2>
-          <button onClick={onClose} className="text-slate-500 hover:text-white transition-colors">
-            <X className="w-5 h-5" />
+        <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h2 style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{title}</h2>
+          <button onClick={onClose} style={{ color: 'var(--text-muted)' }} className="hover-white">
+            <X size={20} />
           </button>
         </div>
-        <div className="p-5">{children}</div>
+        <div style={{ padding: 24, overflowY: 'auto' }}>{children}</div>
       </div>
     </div>
   );

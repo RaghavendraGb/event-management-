@@ -24,6 +24,12 @@ export function AdminEceResources() {
   const [editForm, setEditForm] = useState(EMPTY_FORM);
   const [editYoutubeInput, setEditYoutubeInput] = useState('');
 
+  const Label = ({ children }) => (
+    <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
+      {children}
+    </label>
+  );
+
   const loadData = async () => {
     const [topicsRes, resRes] = await Promise.all([
       supabase.from('ece_topics').select('id, name').order('order_num'),
@@ -133,95 +139,117 @@ export function AdminEceResources() {
   return (
     <div className="max-w-4xl mx-auto px-4 py-6 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-purple-500/20 flex items-center justify-center">
-            <BookOpen className="w-5 h-5 text-purple-400" />
-          </div>
-          <div>
-            <h1 className="text-xl font-black text-white">Manage Resources</h1>
-            <p className="text-xs text-slate-500">PDFs, videos, and career paths per topic</p>
-          </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 32 }}>
+        <div>
+          <h1 style={{ fontSize: 28, fontWeight: 800, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Manage Resources</h1>
+          <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginTop: 4 }}>Curate PDFs, videos, and career materials for the ECE Hub.</p>
         </div>
         <button onClick={() => { setShowForm(!showForm); setForm(EMPTY_FORM); setYoutubeInput(''); }}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-sm font-bold transition-colors">
-          <Plus className="w-4 h-4" /> Add Resource
+          className="btn-primary" style={{ padding: '10px 20px', textTransform: 'uppercase', fontSize: 12 }}>
+          <Plus size={16} /> Add Resource
         </button>
       </div>
 
       {/* Add Form */}
       {showForm && (
-        <form onSubmit={handleSubmit} className="p-5 rounded-2xl border border-white/10 bg-slate-900/60 space-y-4">
-          <h2 className="text-sm font-bold text-slate-200">New Resource</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <form onSubmit={handleSubmit} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderLeft: '4px solid var(--blue)', borderRadius: 12, padding: 24, marginBottom: 32, display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>New Resource</h2>
+            <button type="button" onClick={() => setShowForm(false)} style={{ color: 'var(--text-muted)' }} className="hover-white">
+              <X size={20} />
+            </button>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
             <div>
-              <label className="admin-label">Topic</label>
-              <select className="ece-select" value={form.topic_id} onChange={(e) => setForm((f) => ({ ...f, topic_id: e.target.value }))}>
+              <Label>Topic</Label>
+              <select style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: 10, color: 'var(--text-primary)', fontSize: 13 }}
+                value={form.topic_id} onChange={(e) => setForm((f) => ({ ...f, topic_id: e.target.value }))}>
                 <option value="">General (no topic)</option>
                 {topics.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
               </select>
             </div>
             <div>
-              <label className="admin-label">Type *</label>
-              <select className="ece-select" value={form.type} onChange={(e) => setForm((f) => ({ ...f, type: e.target.value }))}>
+              <Label>Type</Label>
+              <select style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: 10, color: 'var(--text-primary)', fontSize: 13 }}
+                value={form.type} onChange={(e) => setForm((f) => ({ ...f, type: e.target.value }))}>
                 {TYPES.map((t) => <option key={t} value={t}>{t.toUpperCase()}</option>)}
               </select>
             </div>
           </div>
+
           <div>
-            <label className="admin-label">Title *</label>
-            <input className="ece-input" value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} required placeholder="Resource title…" />
+            <Label>Title</Label>
+            <input required style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: 10, color: 'var(--text-primary)', fontSize: 13 }}
+              value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} placeholder="Resource title…" />
           </div>
+
           <div>
-            <label className="admin-label">Description</label>
-            <textarea className="ece-textarea" value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} rows={2} placeholder="Brief description…" />
+            <Label>Description</Label>
+            <textarea rows={2} style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: 10, color: 'var(--text-primary)', fontSize: 13, resize: 'none' }}
+              value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} placeholder="Brief description…" />
           </div>
+
           {/* PDF / Image upload */}
           {(form.type === 'pdf' || form.type === 'image') && (
-            <CloudinaryUpload
-              folder={form.type === 'pdf' ? 'ece_hub/pdfs' : 'ece_hub/gallery'}
-              resourceType={form.type === 'pdf' ? 'raw' : 'image'}
-              accept={form.type === 'pdf' ? '.pdf' : 'image/*'}
-              label={form.type === 'pdf' ? 'Upload PDF' : 'Upload Image'}
-              currentUrl={form.url}
-              currentPublicId={form.public_id}
-              onUpload={handleFileUpload}
-              onDelete={handleFileDelete}
-            />
-          )}
-          {/* YouTube URL */}
-          {form.type === 'video' && (
-            <div>
-              <label className="admin-label">YouTube URL</label>
-              <input className="ece-input" value={youtubeInput} onChange={(e) => handleYoutubeChange(e.target.value)} placeholder="https://youtube.com/watch?v=... or video ID" />
-              {form.youtube_id && <p className="text-xs text-emerald-400 mt-1">Detected ID: {form.youtube_id}</p>}
+            <div style={{ padding: 16, background: 'rgba(59,130,246,0.03)', border: '1px solid var(--border)', borderRadius: 12 }}>
+              <CloudinaryUpload
+                folder={form.type === 'pdf' ? 'ece_hub/pdfs' : 'ece_hub/gallery'}
+                resourceType={form.type === 'pdf' ? 'raw' : 'image'}
+                accept={form.type === 'pdf' ? '.pdf' : 'image/*'}
+                label={form.type === 'pdf' ? 'Upload PDF' : 'Upload Image'}
+                currentUrl={form.url}
+                currentPublicId={form.public_id}
+                onUpload={handleFileUpload}
+                onDelete={handleFileDelete}
+              />
             </div>
           )}
-          <div>
-            <label className="admin-label">Order</label>
-            <input type="number" className="ece-input" value={form.order_num} onChange={(e) => setForm((f) => ({ ...f, order_num: e.target.value }))} />
-          </div>
-          <div className="flex gap-3">
-            <button type="submit" disabled={saving} className="ece-btn-primary flex items-center gap-2">
-              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-              Create
-            </button>
-            <button type="button" onClick={() => setShowForm(false)} className="ece-btn-secondary flex items-center gap-2">
-              <X className="w-4 h-4" /> Cancel
-            </button>
+
+          {/* YouTube URL */}
+          {form.type === 'video' && (
+            <div style={{ padding: 16, background: 'rgba(168,85,247,0.03)', border: '1px solid var(--border)', borderRadius: 12 }}>
+              <Label>YouTube URL / Video ID</Label>
+              <input style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: 10, color: 'var(--text-primary)', fontSize: 13 }}
+                value={youtubeInput} onChange={(e) => handleYoutubeChange(e.target.value)} placeholder="https://youtube.com/watch?v=..." />
+              {form.youtube_id && <p style={{ fontSize: 10, color: 'var(--green)', fontWeight: 700, marginTop: 8, textTransform: 'uppercase' }}>Detected ID: {form.youtube_id}</p>}
+            </div>
+          )}
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            <div>
+              <Label>Internal Order</Label>
+              <input type="number" style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: 10, color: 'var(--text-primary)', fontSize: 13 }}
+                value={form.order_num} onChange={(e) => setForm((f) => ({ ...f, order_num: e.target.value }))} />
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+              <button type="submit" disabled={saving} className="btn-primary" style={{ flex: 1, padding: '10px 0' }}>
+                {saving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />} Deploy
+              </button>
+            </div>
           </div>
         </form>
       )}
 
       {/* Filter by topic */}
-      <div className="flex gap-2 flex-wrap">
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 24, borderBottom: '1px solid var(--border)', paddingBottom: 16 }}>
         <button onClick={() => setFilterTopic('')}
-          className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${!filterTopic ? 'bg-purple-600/20 text-purple-400 border-purple-500/30' : 'text-slate-400 border-white/8 hover:bg-slate-800'}`}>
+          className="btn-ghost"
+          style={{ 
+            fontSize: 11,
+            background: !filterTopic ? 'var(--blue)' : 'var(--elevated)',
+            color: !filterTopic ? '#fff' : 'var(--text-muted)'
+          }}>
           All Topics
         </button>
         {topics.map((t) => (
           <button key={t.id} onClick={() => setFilterTopic(t.id)}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${filterTopic === t.id ? 'bg-purple-600/20 text-purple-400 border-purple-500/30' : 'text-slate-400 border-white/8 hover:bg-slate-800'}`}>
+            className="btn-ghost"
+            style={{ 
+              fontSize: 11,
+              background: filterTopic === t.id ? 'var(--blue)' : 'var(--elevated)',
+              color: filterTopic === t.id ? '#fff' : 'var(--text-muted)'
+            }}>
             {t.name}
           </button>
         ))}
@@ -238,74 +266,77 @@ export function AdminEceResources() {
             <div key={res.id}>
               {/* Inline edit form */}
               {editingId === res.id ? (
-                <div className="p-5 rounded-2xl border border-purple-500/30 bg-slate-900/80 space-y-4">
-                  <h3 className="text-sm font-bold text-purple-300">Editing: {res.title}</h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div style={{ background: 'var(--surface)', border: '1px solid var(--blue)', borderRadius: 12, padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <h3 style={{ fontSize: 14, fontWeight: 700, color: 'var(--blue)' }}>Editing: {res.title}</h3>
+                    <button onClick={() => setEditingId(null)} style={{ color: 'var(--text-muted)' }}><X size={16} /></button>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                     <div>
-                      <label className="admin-label">Topic</label>
-                      <select className="ece-select" value={editForm.topic_id} onChange={(e) => setEditForm((f) => ({ ...f, topic_id: e.target.value }))}>
-                        <option value="">General (no topic)</option>
+                      <Label>Topic</Label>
+                      <select style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: 8, color: 'var(--text-primary)', fontSize: 12 }}
+                        value={editForm.topic_id} onChange={(e) => setEditForm((f) => ({ ...f, topic_id: e.target.value }))}>
+                        <option value="">General</option>
                         {topics.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
                       </select>
                     </div>
                     <div>
-                      <label className="admin-label">Type</label>
-                      <select className="ece-select" value={editForm.type} onChange={(e) => setEditForm((f) => ({ ...f, type: e.target.value }))}>
+                      <Label>Type</Label>
+                      <select style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: 8, color: 'var(--text-primary)', fontSize: 12 }}
+                        value={editForm.type} onChange={(e) => setEditForm((f) => ({ ...f, type: e.target.value }))}>
                         {TYPES.map((t) => <option key={t} value={t}>{t.toUpperCase()}</option>)}
                       </select>
                     </div>
                   </div>
+
                   <div>
-                    <label className="admin-label">Title *</label>
-                    <input className="ece-input" value={editForm.title} onChange={(e) => setEditForm((f) => ({ ...f, title: e.target.value }))} required />
+                    <Label>Title</Label>
+                    <input style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: 8, color: 'var(--text-primary)', fontSize: 13 }}
+                      value={editForm.title} onChange={(e) => setEditForm((f) => ({ ...f, title: e.target.value }))} />
                   </div>
-                  <div>
-                    <label className="admin-label">Description</label>
-                    <textarea className="ece-textarea" value={editForm.description} onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))} rows={2} />
-                  </div>
+
                   {editForm.type === 'video' && (
                     <div>
-                      <label className="admin-label">YouTube URL</label>
-                      <input className="ece-input" value={editYoutubeInput} onChange={(e) => handleEditYoutubeChange(e.target.value)} placeholder="https://youtube.com/watch?v=..." />
-                      {editForm.youtube_id && <p className="text-xs text-emerald-400 mt-1">Detected ID: {editForm.youtube_id}</p>}
+                      <Label>YouTube URL</Label>
+                      <input style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: 8, color: 'var(--text-primary)', fontSize: 13 }}
+                        value={editYoutubeInput} onChange={(e) => handleEditYoutubeChange(e.target.value)} />
                     </div>
                   )}
-                  <div>
-                    <label className="admin-label">Order</label>
-                    <input type="number" className="ece-input" value={editForm.order_num} onChange={(e) => setEditForm((f) => ({ ...f, order_num: e.target.value }))} />
-                  </div>
-                  <div className="flex gap-3">
-                    <button onClick={() => handleEditSave(res.id)} disabled={saving} className="ece-btn-primary flex items-center gap-2">
-                      {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                      Save
-                    </button>
-                    <button onClick={() => setEditingId(null)} className="ece-btn-secondary flex items-center gap-2">
-                      <X className="w-4 h-4" /> Cancel
+
+                  <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end' }}>
+                    <div style={{ flex: 1 }}>
+                      <Label>Order</Label>
+                      <input type="number" style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: 8, color: 'var(--text-primary)', fontSize: 13 }}
+                        value={editForm.order_num} onChange={(e) => setEditForm((f) => ({ ...f, order_num: e.target.value }))} />
+                    </div>
+                    <button onClick={() => handleEditSave(res.id)} disabled={saving} className="btn-primary" style={{ padding: '8px 24px', fontSize: 12 }}>
+                      {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} Save
                     </button>
                   </div>
                 </div>
               ) : (
                 /* Read-only row */
-                <div className="flex items-center gap-3 p-4 rounded-2xl border border-white/8 bg-slate-900/60">
-                  <GripVertical className="w-4 h-4 text-slate-600 shrink-0" />
-                  <div
-                    className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase shrink-0"
-                    style={{ background: `${typeColor[res.type] || '#3b82f6'}22`, color: typeColor[res.type] || '#3b82f6' }}
-                  >
-                    {res.type}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '16px 20px', borderRadius: 12, background: 'var(--surface)', border: '1px solid var(--border)' }}>
+                  <GripVertical size={14} style={{ color: 'var(--text-muted)', cursor: 'grab', shrink: 0 }} />
+                  <div style={{ width: 32, height: 32, borderRadius: 6, background: 'var(--elevated)', display: 'flex', alignItems: 'center', justifyContent: 'center', shrink: 0 }}>
+                    <BookOpen size={16} style={{ color: typeColor[res.type] || 'var(--blue)' }} />
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-slate-200 truncate">{res.title}</p>
-                    <p className="text-xs text-slate-500">{res.ece_topics?.name || 'No topic'}</p>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>{res.title}</p>
+                      <span style={{ fontSize: 9, fontWeight: 800, padding: '2px 8px', borderRadius: 4, background: 'var(--elevated)', color: typeColor[res.type] || 'var(--blue)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{res.type}</span>
+                    </div>
+                    <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{res.ece_topics?.name || 'General Resource'}</p>
                   </div>
-                  <button onClick={() => handleEditStart(res)}
-                    className="p-2 rounded-lg hover:bg-slate-700 text-slate-400 hover:text-white transition-colors shrink-0">
-                    <Pencil className="w-4 h-4" />
-                  </button>
-                  <button onClick={() => handleDelete(res)} disabled={deletingId === res.id}
-                    className="p-2 rounded-lg hover:bg-red-500/10 text-slate-400 hover:text-red-400 transition-colors shrink-0">
-                    {deletingId === res.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                  </button>
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    <button onClick={() => handleEditStart(res)} className="btn-ghost" style={{ padding: 8, minHeight: 'unset' }}>
+                      <Pencil size={14} />
+                    </button>
+                    <button onClick={() => handleDelete(res)} disabled={deletingId === res.id} className="btn-ghost" style={{ padding: 8, minHeight: 'unset', color: 'var(--red)' }}>
+                      {deletingId === res.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                    </button>
+                  </div>
                 </div>
               )}
             </div>

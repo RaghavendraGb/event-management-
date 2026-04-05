@@ -12,8 +12,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       devOptions: { enabled: true },
       manifest: {
-        name: 'EventArena',
-        short_name: 'EventArena',
+        name: 'Zentrix',
+        short_name: 'Zentrix',
         description: 'Live Event Competition Platform',
         theme_color: '#0f172a',
         background_color: '#0f172a',

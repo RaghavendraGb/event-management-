@@ -43,78 +43,101 @@ export function AdminDashboard() {
     loadDash();
   }, []);
 
-  if (loading) return <div className="p-10"><div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div></div>;
+  if (loading) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60dvh' }}><div style={{ width: 40, height: 40, border: '3px solid var(--elevated)', borderTopColor: 'var(--blue)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} /></div>;
 
-  const StatCard = ({ title, value, icon: Icon, color, bg }) => (
-    <div className="glass-card p-6 flex items-start justify-between">
-      <div>
-        <p className="text-slate-400 text-sm font-bold uppercase tracking-widest mb-1">{title}</p>
-        <h3 className="text-4xl font-black text-white">{value}</h3>
+  const StatCard = ({ title, value, icon: Icon, color, description }) => (
+    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: 32, display: 'flex', flexDirection: 'column', gap: 16, transition: 'all 0.2s', position: 'relative', overflow: 'hidden' }} className="hover-elevated">
+      <div style={{ position: 'absolute', top: -20, right: -20, width: 80, height: 80, borderRadius: '50%', background: color, opacity: 0.03, filter: 'blur(20px)' }} />
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ width: 44, height: 44, borderRadius: 12, background: 'var(--elevated)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', color }}>
+          <Icon size={20} />
+        </div>
+        <p style={{ fontSize: 10, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{title}</p>
       </div>
-      <div className={`p-3 rounded-xl ${bg} ${color}`}>
-        <Icon className="w-6 h-6" />
+      <div>
+        <h3 style={{ fontSize: 36, fontWeight: 900, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>{value}</h3>
+        {description && <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>{description}</p>}
       </div>
     </div>
   );
 
   return (
-    <div className="p-6 md:p-10 max-w-7xl mx-auto space-y-10">
+    <div className="p-6 md:p-10 max-w-7xl mx-auto space-y-12">
       
-      <div>
-        <h1 className="text-3xl font-black text-white uppercase tracking-widest mb-2">Command Center</h1>
-        <p className="text-slate-400 font-medium">Platform overview and active metrics.</p>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div>
+          <h1 style={{ fontSize: 32, fontWeight: 900, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Command Center</h1>
+          <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginTop: 4 }}>Real-time platform metrics and operational oversight.</p>
+        </div>
+        <div style={{ display: 'flex', gap: 12 }}>
+           <div style={{ background: 'rgba(16,185,129,0.1)', color: 'var(--green)', padding: '8px 16px', borderRadius: 8, fontSize: 10, fontWeight: 800, border: '1px solid rgba(16,185,129,0.2)', display: 'flex', alignItems: 'center', gap: 8 }}>
+             <div className="live-dot" /> SYSTEM ACTIVE
+           </div>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard title="Total Events" value={stats.totalEvents} icon={Calendar} color="text-blue-500" bg="bg-blue-500/20" />
-        <StatCard title="Live Events" value={stats.activeEvents} icon={Activity} color="text-emerald-500" bg="bg-emerald-500/20" />
-        <StatCard title="Total Registrations" value={stats.totalParticipants} icon={Users} color="text-purple-500" bg="bg-purple-500/20" />
-        <StatCard title="Certificates Issued" value={stats.certificatesMinted} icon={Award} color="text-yellow-500" bg="bg-yellow-500/20" />
+      {/* Grid Stats */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 24 }}>
+        <StatCard title="Asset Deployments" value={stats.totalEvents} icon={Calendar} color="var(--blue)" description="Total competition instances created." />
+        <StatCard title="Active Protocols" value={stats.activeEvents} icon={Activity} color="var(--green)" description="Currently running live events." />
+        <StatCard title="Personnel Registry" value={stats.totalParticipants} icon={Users} color="#a855f7" description="Total registered participant accounts." />
+        <StatCard title="Authentication Issued" value={stats.certificatesMinted} icon={Award} color="var(--amber)" description="Total certificates generated to date." />
       </div>
 
-      <div>
-        <div className="flex justify-between items-end mb-6">
-          <h2 className="text-xl font-bold text-white uppercase tracking-wider">Recent Events</h2>
-          <Link to="/admin/events" className="text-sm font-bold text-blue-400 hover:text-blue-300 transition-colors flex flex-row items-center gap-1 uppercase tracking-widest">
-            Manage All <ArrowRight className="w-4 h-4"/>
+      {/* Recent Activity */}
+      <div style={{ spaceY: 24 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 20 }}>
+          <h2 style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Recent Deployments</h2>
+          <Link to="/admin/events" style={{ fontSize: 11, fontWeight: 800, color: 'var(--blue)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'flex', alignItems: 'center', gap: 6 }} className="hover-underline">
+            Access Full Registry <ArrowRight size={14}/>
           </Link>
         </div>
 
-        <div className="glass-card overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left">
-              <thead className="bg-slate-900 border-b border-white/5">
-                <tr>
-                  <th className="p-4 text-xs font-black text-slate-500 uppercase tracking-widest">Event</th>
-                  <th className="p-4 text-xs font-black text-slate-500 uppercase tracking-widest">Type</th>
-                  <th className="p-4 text-xs font-black text-slate-500 uppercase tracking-widest">Status</th>
-                  <th className="p-4 text-xs font-black text-slate-500 uppercase tracking-widest text-right">Date</th>
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden' }}>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+              <thead>
+                <tr style={{ background: 'var(--elevated)', borderBottom: '1px solid var(--border)' }}>
+                  <th style={{ padding: '16px 24px', fontSize: 10, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Event Signature</th>
+                  <th style={{ padding: '16px 24px', fontSize: 10, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Sub-protocol</th>
+                  <th style={{ padding: '16px 24px', fontSize: 10, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Lifecycle State</th>
+                  <th style={{ padding: '16px 24px', fontSize: 10, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', textAlign: 'right' }}>Initialization</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/5">
+              <tbody style={{ fontSize: 13 }}>
                 {recentEvents.map(e => (
-                  <tr key={e.id} className="hover:bg-white/[0.02] transition-colors">
-                    <td className="p-4 font-bold text-white text-sm">
-                      <Link to={`/admin/events`} className="hover:text-blue-400 transition-colors">{e.title}</Link>
+                  <tr key={e.id} style={{ borderBottom: '1px solid var(--border)', transition: 'all 0.2s' }} className="row-hover">
+                    <td style={{ padding: '18px 24px' }}>
+                      <Link to={`/admin/events`} style={{ fontWeight: 800, color: 'var(--text-primary)', fontSize: 14 }}>{e.title}</Link>
                     </td>
-                    <td className="p-4">
-                      <span className="text-xs uppercase font-bold tracking-wider text-slate-400 bg-slate-900 px-2 py-1 rounded">
+                    <td style={{ padding: '18px 24px' }}>
+                      <span style={{ fontSize: 9, fontWeight: 800, padding: '3px 8px', background: 'var(--elevated)', borderRadius: 4, color: 'var(--text-secondary)', textTransform: 'uppercase', border: '1px solid var(--border)', letterSpacing: '0.02em' }}>
                         {e.type.replace('_', ' ')}
                       </span>
                     </td>
-                    <td className="p-4">
-                      {e.status === 'upcoming' && <span className="text-xs font-bold text-blue-400 bg-blue-400/10 px-2 py-1 rounded uppercase tracking-wider">Upcoming</span>}
-                      {e.status === 'live' && <span className="text-xs font-bold text-emerald-400 bg-emerald-400/10 px-2 py-1 rounded uppercase tracking-wider animate-pulse flex items-center w-max gap-1"><Play className="w-3 h-3"/> Live</span>}
-                      {e.status === 'ended' && <span className="text-xs font-bold text-slate-400 bg-slate-800 px-2 py-1 rounded uppercase tracking-wider flex items-center w-max gap-1"><CheckCircle2 className="w-3 h-3"/> Ended</span>}
+                    <td style={{ padding: '18px 24px' }}>
+                      {e.status === 'upcoming' && <span style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', color: 'var(--blue)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--blue)' }} /> Scheduled
+                      </span>}
+                      {e.status === 'live' && <span style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', color: 'var(--green)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <div className="live-dot" /> Live Active
+                      </span>}
+                      {e.status === 'ended' && <span style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <CheckCircle2 size={12} /> Terminated
+                      </span>}
                     </td>
-                    <td className="p-4 text-xs text-slate-400 font-medium text-right font-mono">
-                      {new Date(e.start_at).toLocaleDateString()}
+                    <td style={{ padding: '18px 24px', textAlign: 'right', color: 'var(--text-muted)', fontFamily: 'ui-monospace, monospace', fontSize: 11 }}>
+                      {new Date(e.start_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
                     </td>
                   </tr>
                 ))}
                 {recentEvents.length === 0 && (
                   <tr>
-                    <td colSpan="4" className="p-8 text-center text-slate-500">No events found. Start building!</td>
+                    <td colSpan="4" style={{ padding: 64, textAlign: 'center', color: 'var(--text-muted)', background: 'var(--elevated)' }}>
+                      <Activity size={32} style={{ margin: '0 auto 16px', opacity: 0.2 }} />
+                      <p style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Registry Empty. Initialize a deployment to start.</p>
+                    </td>
                   </tr>
                 )}
               </tbody>

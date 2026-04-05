@@ -56,13 +56,11 @@ export function AdminEceDashboard() {
   return (
     <div className="max-w-5xl mx-auto px-4 py-6 space-y-8">
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-2xl bg-purple-500/20 flex items-center justify-center">
-          <LayoutDashboard className="w-5 h-5 text-purple-400" />
-        </div>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 32 }}>
         <div>
-          <h1 className="text-xl font-black text-white">ECE Admin Dashboard</h1>
-          <p className="text-xs text-slate-500">Overview of all ECE Hub statistics</p>
+          <h1 style={{ fontSize: 28, fontWeight: 800, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>ECE Hub Master</h1>
+          <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginTop: 4 }}>Central management for all electronics engineering resources.</p>
         </div>
       </div>
 
@@ -73,31 +71,39 @@ export function AdminEceDashboard() {
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 16 }}>
             {statCards.map((card) => {
               const Icon = card.icon;
               return (
                 <Link
                   key={card.label}
                   to={card.path}
-                  className={`
-                    p-4 rounded-2xl border transition-all hover:scale-[1.02]
-                    ${card.alert ? 'border-red-500/30 bg-red-500/5' : 'border-white/8 bg-slate-900/60'}
-                  `}
+                  style={{
+                    padding: 24,
+                    background: 'var(--surface)',
+                    border: card.alert ? '1px solid var(--red)' : '1px solid var(--border)',
+                    borderRadius: 12,
+                    textDecoration: 'none',
+                    transition: 'transform 0.2s ease, border-color 0.2s ease',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 12
+                  }}
+                  onMouseOver={(e) => { e.currentTarget.style.borderColor = 'var(--blue)'; e.currentTarget.style.transform = 'translateY(-2px)'; }}
+                  onMouseOut={(e) => { e.currentTarget.style.borderColor = card.alert ? 'var(--red)' : 'var(--border)'; e.currentTarget.style.transform = 'translateY(0)'; }}
                 >
-                  <div className="flex items-center gap-2 mb-2">
-                    <div
-                      className="w-8 h-8 rounded-xl flex items-center justify-center"
-                      style={{ background: `${card.color}22` }}
-                    >
-                      <Icon className="w-4 h-4" style={{ color: card.color }} />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ width: 40, height: 40, borderRadius: 8, background: 'var(--elevated)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Icon size={20} style={{ color: card.color }} />
                     </div>
                     {card.alert && (
-                      <AlertCircle className="w-4 h-4 text-red-400 animate-pulse" />
+                      <AlertCircle size={16} style={{ color: 'var(--red)', animation: 'pulse 2s infinite' }} />
                     )}
                   </div>
-                  <p className="text-2xl font-black text-white">{card.value}</p>
-                  <p className="text-xs text-slate-500">{card.label}</p>
+                  <div>
+                    <p style={{ fontSize: 24, fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>{card.value}</p>
+                    <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginTop: 4 }}>{card.label}</p>
+                  </div>
                 </Link>
               );
             })}
@@ -105,51 +111,60 @@ export function AdminEceDashboard() {
 
           {/* Quick Actions */}
           <div>
-            <h2 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-3">
+            <h2 style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 16 }}>
               Quick Actions
             </h2>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12 }}>
               {quickActions.map((action) => {
                 const Icon = action.icon;
                 return (
                   <Link
                     key={action.label}
                     to={action.path}
-                    className="flex items-center gap-2 px-4 py-3 rounded-xl border border-white/8 bg-slate-900/60 hover:bg-slate-800 transition-all"
+                    className="btn-ghost"
+                    style={{ background: 'var(--elevated)', justifyContent: 'flex-start', padding: '12px 16px' }}
                   >
-                    <Icon className="w-4 h-4 shrink-0" style={{ color: action.color }} />
-                    <span className="text-sm font-semibold text-slate-200">{action.label}</span>
+                    <Icon size={16} style={{ color: action.color }} />
+                    <span style={{ fontSize: 13, fontWeight: 600 }}>{action.label}</span>
                   </Link>
                 );
               })}
             </div>
           </div>
 
-          {/* Admin nav links */}
+          {/* Management Suite */}
           <div>
-            <h2 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-3">
-              Manage
+            <h2 style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 16 }}>
+              Management Suite
             </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
               {[
                 { label: 'Topics & Mind Map', path: '/admin/ece/topics', icon: Cpu },
                 { label: 'Resources (PDFs/Videos)', path: '/admin/ece/resources', icon: BookOpen },
                 { label: 'Photo Gallery', path: '/admin/ece/gallery', icon: Image },
-                { label: 'Notices', path: '/admin/ece/notices', icon: Bell },
-                { label: 'Doubts', path: '/admin/ece/doubts', icon: HelpCircle },
-                { label: 'Chat Monitor', path: '/admin/ece/chat', icon: MessageSquare },
+                { label: 'Notices System', path: '/admin/ece/notices', icon: Bell },
+                { label: 'Doubt Resolution', path: '/admin/ece/doubts', icon: HelpCircle },
+                { label: 'Live Chat Monitor', path: '/admin/ece/chat', icon: MessageSquare },
                 { label: 'Motivational Quotes', path: '/admin/ece/quotes', icon: Quote },
-                { label: 'Organisation', path: '/admin/ece/organisation', icon: Building2 },
+                { label: 'ECE Organisation', path: '/admin/ece/organisation', icon: Building2 },
               ].map((item) => {
                 const Icon = item.icon;
                 return (
                   <Link
                     key={item.path}
                     to={item.path}
-                    className="flex items-center gap-3 px-4 py-3 rounded-xl border border-white/8 bg-slate-900/40 hover:bg-slate-800 hover:border-purple-500/30 transition-all"
+                    className="btn-ghost"
+                    style={{ 
+                      justifyContent: 'flex-start', 
+                      padding: '16px 20px', 
+                      background: 'var(--surface)', 
+                      border: '1px solid var(--border)' 
+                    }}
+                    onMouseOver={(e) => { e.currentTarget.style.borderColor = 'var(--blue)'; }}
+                    onMouseOut={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; }}
                   >
-                    <Icon className="w-4 h-4 text-purple-400 shrink-0" />
-                    <span className="text-sm font-medium text-slate-200">{item.label}</span>
+                    <Icon size={18} style={{ color: 'var(--blue)' }} />
+                    <span style={{ fontSize: 14, fontWeight: 600 }}>{item.label}</span>
                   </Link>
                 );
               })}

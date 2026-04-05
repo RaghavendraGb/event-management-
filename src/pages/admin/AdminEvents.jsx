@@ -1,21 +1,23 @@
 import { useState, useEffect, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useStore } from '../../store';
 import {
   CalendarClock, Play, Square, Plus, Pencil,
   Trash2, X, Check, ListChecks, Users, Clock,
-  ChevronDown, ChevronUp, AlertTriangle, RotateCcw,
+  ChevronDown, ChevronUp, TriangleAlert, RotateCcw,
   ShieldAlert, SkipForward, Activity, Trophy, Megaphone
 } from 'lucide-react';
 import { AdminStatusPanel } from '../../components/live/AdminStatusPanel';
 
 const INPUT_CLS = "w-full bg-slate-900 border border-white/10 rounded-lg p-3 text-white focus:outline-none focus:border-blue-500 transition-colors";
 
-const TYPE_LABELS = { quiz: 'Standard Quiz', rapid_fire: 'Rapid Fire', treasure_hunt: 'Treasure Hunt' };
+const TYPE_LABELS = { quiz: 'Standard Quiz', rapid_fire: 'Rapid Fire', treasure_hunt: 'Treasure Hunt', coding_challenge: 'Coding Challenge' };
 const TYPE_COLORS = {
-  quiz:         'bg-blue-500/20 text-blue-400 border-blue-500/30',
-  rapid_fire:   'bg-orange-500/20 text-orange-400 border-orange-500/30',
-  treasure_hunt:'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+  quiz:             'color: var(--blue); border-color: rgba(37,99,235,0.25); background: rgba(37,99,235,0.06);',
+  rapid_fire:       'color: var(--amber); border-color: rgba(245,158,11,0.25); background: rgba(245,158,11,0.06);',
+  treasure_hunt:    'color: var(--green); border-color: rgba(16,185,129,0.25); background: rgba(16,185,129,0.06);',
+  coding_challenge: 'color: #a855f7; border-color: rgba(168,85,247,0.25); background: rgba(168,85,247,0.06);',
 };
 
 const EMPTY_FORM = {
@@ -24,9 +26,21 @@ const EMPTY_FORM = {
   question_count: ''  // Feature 12: UI-only, not sent to DB
 };
 
-// I: Use UTC midnight so event start_at is timezone-independent (fix #25)
-const dayStart = (d) => d ? new Date(`${d}T00:00:00Z`).toISOString() : '';
-const dayEnd   = (d) => d ? new Date(`${d}T23:59:59Z`).toISOString() : '';
+// Helper to parse the legacy string styles into objects
+const parseStyle = (str) => {
+  const obj = {};
+  str.split(';').forEach(pair => {
+    const [k, v] = pair.split(':');
+    if (k && v) obj[k.trim().replace(/-([a-z])/g, g => g[1].toUpperCase())] = v.trim();
+  });
+  return obj;
+};
+
+const Label = ({ children }) => (
+  <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
+    {children}
+  </label>
+);
 
 export function AdminEvents() {
   const user = useStore(state => state.user);
@@ -287,90 +301,85 @@ export function AdminEvents() {
   // Participants on waiting screen see the ceremony; event stays live.
 
   if (loading) return (
-    <div className="flex justify-center py-20">
-      <div className="w-10 h-10 border-4 border-slate-800 border-t-blue-500 rounded-full animate-spin" />
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60dvh' }}>
+      <div style={{ width: 40, height: 40, border: '3px solid var(--elevated)', borderTopColor: 'var(--blue)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
     </div>
   );
 
   return (
-    <div className="p-6 md:p-10 max-w-7xl mx-auto">
+    <div className="p-6 md:p-10 max-w-7xl mx-auto space-y-10 pb-20">
 
       {/* Feature 10: Confirmation Modal */}
       {confirmModal && (
-        <div className="fixed inset-0 z-[500] bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4">
-          <div className={`bg-slate-900 border rounded-2xl p-6 max-w-md w-full shadow-2xl ${
-            confirmModal.action === 'live' ? 'border-emerald-500/40' : 
-            confirmModal.action === 'announce' ? 'border-amber-500/40' : 'border-red-500/40'
-          }`}>
-            <div className="flex items-center gap-3 mb-4">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
-                confirmModal.action === 'live' ? 'bg-emerald-500/20' : 
-                confirmModal.action === 'announce' ? 'bg-amber-500/20' : 'bg-red-500/20'
-              }`}>
-                {confirmModal.action === 'live' ? <Play className="w-5 h-5 text-emerald-400" /> :
-                 confirmModal.action === 'announce' ? <Trophy className="w-5 h-5 text-amber-400" /> :
-                 <Square className="w-5 h-5 text-red-400 fill-red-400" />
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div style={{ background: 'var(--surface)', border: `1px solid ${confirmModal.action === 'live' ? 'rgba(16,185,129,0.4)' : confirmModal.action === 'announce' ? 'rgba(245,158,11,0.4)' : 'rgba(239,68,68,0.4)'}`, borderRadius: 12, padding: 32, maxWidth: 460, width: '100%', boxShadow: '0 20px 40px rgba(0,0,0,0.4)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24 }}>
+              <div style={{ width: 48, height: 48, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--elevated)', border: '1px solid var(--border)' }}>
+                {confirmModal.action === 'live' ? <Play size={20} style={{ color: 'var(--green)' }} /> :
+                 confirmModal.action === 'announce' ? <Trophy size={20} style={{ color: 'var(--amber)' }} /> :
+                 <Square size={20} style={{ color: 'var(--red)' }} />
                 }
               </div>
               <div>
-                <h3 className="font-black text-white text-base">
-                  {confirmModal.action === 'live' ? 'Go Live?' : 
-                   confirmModal.action === 'announce' ? '🏆 Announce Winner?' : '🛑 End Event?'}
+                <h3 style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)' }}>
+                  {confirmModal.action === 'live' ? 'Deploy Event Live?' : 
+                   confirmModal.action === 'announce' ? 'Announce Winner Ceremony?' : 'End Active Event?'}
                 </h3>
-                <p className="text-xs text-slate-400 truncate max-w-[220px]">{confirmModal.title}</p>
+                <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>{confirmModal.title}</p>
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-2 mb-4 text-center">
-              <div className="bg-slate-800/60 rounded-lg p-2">
-                <p className="text-sm font-black text-white">{confirmModal.participantCount}</p>
-                <p className="text-[10px] text-slate-500 uppercase tracking-widest">Participants</p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 24 }}>
+              <div style={{ background: 'var(--elevated)', padding: '12px 8px', borderRadius: 6, textAlign: 'center' }}>
+                <p style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-primary)' }}>{confirmModal.participantCount}</p>
+                <p style={{ fontSize: 9, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700 }}>Users</p>
               </div>
-              <div className="bg-slate-800/60 rounded-lg p-2">
-                <p className="text-sm font-black text-white">{confirmModal.questionCount}</p>
-                <p className="text-[10px] text-slate-500 uppercase tracking-widest">Questions</p>
+              <div style={{ background: 'var(--elevated)', padding: '12px 8px', borderRadius: 6, textAlign: 'center' }}>
+                <p style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-primary)' }}>{confirmModal.questionCount}</p>
+                <p style={{ fontSize: 9, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700 }}>Questions</p>
               </div>
-              <div className="bg-slate-800/60 rounded-lg p-2">
-                <p className="text-sm font-black text-white capitalize">
-                  {confirmModal.action === 'live' ? 'LIVE' : confirmModal.action === 'announce' ? 'WINNER' : 'END'}
-                </p>
-                <p className="text-[10px] text-slate-500 uppercase tracking-widest">Action</p>
+              <div style={{ background: 'var(--elevated)', padding: '12px 8px', borderRadius: 6, textAlign: 'center' }}>
+                <p style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>{confirmModal.action}</p>
+                <p style={{ fontSize: 9, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700 }}>Action</p>
               </div>
             </div>
 
             {confirmModal.action === 'ended' && (
-              <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg p-3 mb-4">
-                This will immediately submit all active participants and lock the event.
-              </p>
+              <div style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)', padding: 12, borderRadius: 8, marginBottom: 24 }}>
+                <p style={{ fontSize: 12, color: 'var(--red)', fontWeight: 600, textAlign: 'center' }}>Warning: This will immediately close all active sessions.</p>
+              </div>
             )}
 
-            <p className="text-xs text-slate-400 mb-2">Type <span className="font-mono font-black text-white bg-slate-800 px-1.5 py-0.5 rounded">CONFIRM</span> to proceed:</p>
+            <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8 }}>Verification: Type <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 700, color: 'var(--text-primary)', background: 'var(--elevated)', padding: '2px 6px', borderRadius: 4 }}>CONFIRM</span> below</p>
             <input
               type="text"
               value={confirmInput}
               onChange={e => setConfirmInput(e.target.value)}
               placeholder="CONFIRM"
-              className="w-full bg-slate-800 border border-slate-700 rounded-lg p-3 text-white font-mono text-sm focus:outline-none focus:border-blue-500 mb-4"
+              style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: 12, color: 'var(--text-primary)', fontFamily: 'ui-monospace, monospace', textTransform: 'uppercase', marginBottom: 24, fontSize: 14 }}
             />
 
-            <div className="flex gap-3">
+            <div style={{ display: 'flex', gap: 12 }}>
               <button
                 onClick={() => { setConfirmModal(null); setConfirmInput(''); }}
-                className="flex-1 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold text-sm transition-colors"
+                className="btn-ghost"
+                style={{ flex: 1, padding: '10px 0' }}
               >
                 Cancel
               </button>
               <button
                 onClick={confirmStatusChange}
                 disabled={confirmInput !== 'CONFIRM'}
-                className={`flex-1 px-4 py-2.5 rounded-xl font-black text-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
-                  confirmModal.action === 'live' ? 'bg-emerald-600 hover:bg-emerald-500 text-white' :
-                  confirmModal.action === 'announce' ? 'bg-amber-600 hover:bg-amber-500 text-white' :
-                  'bg-red-600 hover:bg-red-500 text-white'
-                }`}
+                className="btn-primary"
+                style={{
+                  flex: 1,
+                  padding: '10px 0',
+                  background: confirmModal.action === 'live' ? 'var(--green)' : confirmModal.action === 'announce' ? 'var(--amber)' : 'var(--red)',
+                  color: confirmModal.action === 'live' ? '#000' : confirmModal.action === 'announce' ? '#000' : '#fff'
+                }}
               >
-                {confirmModal.action === 'live' ? '🚀 Go Live' : 
-                 confirmModal.action === 'announce' ? '🏆 Announce' : '🛑 End Event'}
+                {confirmModal.action === 'live' ? 'Confirm Live' : 
+                 confirmModal.action === 'announce' ? 'Confirm Announce' : 'Confirm End'}
               </button>
             </div>
           </div>
@@ -378,15 +387,17 @@ export function AdminEvents() {
       )}
 
       {/* Header */}
-      <div className="flex justify-between items-start mb-8">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
-          <h1 className="text-3xl font-black text-white uppercase tracking-widest">Event Master</h1>
-          <p className="text-slate-400 mt-1 text-sm">Create, edit, manage lifecycle &amp; assign questions to events.</p>
+          <h1 style={{ fontSize: 28, fontWeight: 800, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Event Master</h1>
+          <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginTop: 4 }}>Manage competition lifecycle, question assignments, and real-time deployments.</p>
         </div>
         <button
           onClick={() => { setEditingEvent(null); setFormData(EMPTY_FORM); setShowForm(f => !f); }}
-          className="bg-blue-600 hover:bg-blue-500 text-white px-5 py-2.5 rounded-xl font-black uppercase tracking-widest text-sm flex items-center gap-2 transition-all shadow-[0_0_15px_rgba(37,99,235,0.3)]">
-          <Plus className="w-4 h-4" /> Create Event
+          className="btn-primary"
+          style={{ padding: '12px 24px', background: 'var(--blue)', color: '#000', fontSize: 12 }}
+        >
+          <Plus size={16} /> {showForm ? 'Discard Entry' : 'Create Deployment'}
         </button>
       </div>
 
@@ -394,99 +405,103 @@ export function AdminEvents() {
       {showForm && (
         <form
           onSubmit={editingEvent ? handleUpdate : handleCreate}
-          className="glass-card p-6 mb-8 border-l-4 border-l-blue-500">
-          <div className="flex justify-between items-center mb-5">
-            <h2 className="font-black text-white text-lg">
-              {editingEvent ? `✏️ Editing: ${editingEvent.title}` : '➕ New Event'}
+          style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderLeft: '4px solid var(--blue)', borderRadius: 12, padding: 32 }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 32 }}>
+            <h2 style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              {editingEvent ? `Edit: ${editingEvent.title}` : 'Initialize Deployment'}
             </h2>
-            <button type="button" onClick={cancelForm} className="text-slate-500 hover:text-white">
-              <X className="w-5 h-5" />
+            <button type="button" onClick={cancelForm} style={{ color: 'var(--text-muted)', cursor: 'pointer' }} className="hover-white">
+              <X size={20} />
             </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="md:col-span-2">
-              <Label>Event Title</Label>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 24 }}>
+            <div style={{ gridColumn: 'span 2' }}>
+              <Label>Event Identity</Label>
               <input required type="text"
-                className={INPUT_CLS}
+                placeholder="e.g. National Hackathon 2026"
+                style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: '12px 16px', color: 'var(--text-primary)', fontWeight: 700 }}
                 value={formData.title}
                 onChange={e => setFormData({...formData, title: e.target.value})} />
             </div>
 
-            <div className="md:col-span-2">
-              <Label>Description</Label>
+            <div style={{ gridColumn: 'span 2' }}>
+              <Label>Description / Rules</Label>
               <textarea rows={3}
-                className={`${INPUT_CLS} resize-none`}
-                placeholder="Describe what this event is about..."
+                style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: '12px 16px', color: 'var(--text-primary)', fontSize: 14, resize: 'none' }}
+                placeholder="Detail the competition parameters..."
                 value={formData.description}
                 onChange={e => setFormData({...formData, description: e.target.value})} />
             </div>
 
             <div>
-              <Label>Event Type</Label>
-              <select className={INPUT_CLS}
+              <Label>Deployment Type</Label>
+              <select style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: '12px 16px', color: 'var(--text-primary)', fontWeight: 700 }}
                 value={formData.type}
                 onChange={e => setFormData({...formData, type: e.target.value})}>
                 <option value="quiz">Standard Quiz</option>
                 <option value="rapid_fire">Rapid Fire</option>
                 <option value="treasure_hunt">Treasure Hunt</option>
+                <option value="coding_challenge">Coding Challenge</option>
               </select>
-              <p className="text-xs text-slate-600 mt-1">
-                {formData.type === 'quiz'         && 'One question at a time, submit after review.'}
-                {formData.type === 'rapid_fire'   && 'One question at a time with countdown timer per question.'}
-                {formData.type === 'treasure_hunt'&& 'Sequential — must answer correctly to unlock the next.'}
-              </p>
             </div>
 
-            {/* Feature 12: Question count field */}
             {!editingEvent && (
               <div>
-                <Label>How Many Questions? <span className="text-slate-600 normal-case font-normal">(guides selection)</span></Label>
+                <Label>Question Target <span style={{ color: 'var(--text-muted)', fontWeight: 400, textTransform: 'none' }}>(Guides Selection)</span></Label>
                 <input type="number" min={1} max={200}
-                  className={INPUT_CLS}
-                  placeholder="e.g. 10"
+                  style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: '12px 16px', color: 'var(--text-primary)', fontWeight: 700, fontMono: true }}
+                  placeholder="e.g. 15"
                   value={formData.question_count}
                   onChange={e => setFormData({...formData, question_count: e.target.value})} />
-                <p className="text-xs text-slate-600 mt-1">Sets the target count for guided question selection after creation.</p>
               </div>
             )}
 
             <div>
-              <Label>Max Participants</Label>
+              <Label>Personnel Capacity</Label>
               <input type="number" min={1}
-                className={INPUT_CLS}
+                style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: '12px 16px', color: 'var(--text-primary)', fontWeight: 700, fontMono: true }}
                 value={formData.max_participants}
                 onChange={e => setFormData({...formData, max_participants: e.target.value})} />
             </div>
 
             <div>
-              <Label>Event Date (Start)</Label>
-              <input required type="date" className={INPUT_CLS}
+              <Label>Deployment Logic</Label>
+              <p style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                {formData.type === 'quiz'         && 'Discontinuous — manual batch submission.'}
+                {formData.type === 'rapid_fire'   && 'Continuous — high-frequency temporal judgment.'}
+                {formData.type === 'treasure_hunt'&& 'Sequential — locked architectural progression.'}
+                {formData.type === 'coding_challenge' && 'Compiler Verified — judging against hidden matrices.'}
+              </p>
+            </div>
+
+            <div>
+              <Label>Temporal Start</Label>
+              <input required type="date" style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: '12px 16px', color: 'var(--text-primary)', fontWeight: 700 }}
                 value={formData.start_at}
                 onChange={e => setFormData({...formData, start_at: e.target.value})} />
             </div>
 
             <div>
-              <Label>End Date <span className="text-slate-600 normal-case font-normal">(optional)</span></Label>
-              <input type="date" className={INPUT_CLS}
+              <Label>Temporal End <span style={{ color: 'var(--text-muted)', fontWeight: 400, textTransform: 'none' }}>(Optional)</span></Label>
+              <input type="date" style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: '12px 16px', color: 'var(--text-primary)', fontWeight: 700 }}
                 value={formData.end_at}
                 onChange={e => setFormData({...formData, end_at: e.target.value})} />
             </div>
 
-            <div className="md:col-span-2">
-              <Label>Sponsor Logo URL (optional)</Label>
-              <input type="url" className={INPUT_CLS}
-                placeholder="https://..."
+            <div style={{ gridColumn: 'span 2' }}>
+              <Label>Sponsor Signature (Logo URL)</Label>
+              <input type="url" style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: '12px 16px', color: 'var(--text-primary)', fontSize: 13 }}
+                placeholder="https://signature.cdn.com/asset.png"
                 value={formData.sponsor_logo_url}
                 onChange={e => setFormData({...formData, sponsor_logo_url: e.target.value})} />
             </div>
 
-            <div className="md:col-span-2 flex justify-end gap-3 border-t border-white/5 pt-4 mt-2">
-              <button type="button" onClick={cancelForm}
-                className="px-5 py-2 text-slate-400 hover:text-white font-bold transition-colors">Cancel</button>
-              <button type="submit"
-                className="bg-emerald-600 hover:bg-emerald-500 text-white px-8 py-2.5 rounded-xl font-black uppercase tracking-widest text-sm transition-all">
-                {editingEvent ? '💾 Save Changes' : '🚀 Deploy Event'}
+            <div style={{ gridColumn: 'span 2', display: 'flex', justifyContent: 'flex-end', gap: 16, borderTop: '1px solid var(--border)', paddingTop: 24, marginTop: 8 }}>
+              <button type="button" onClick={cancelForm} className="btn-ghost" style={{ padding: '10px 24px' }}>Discard</button>
+              <button type="submit" className="btn-primary" style={{ padding: '10px 32px', background: 'var(--green)', color: '#000' }}>
+                {editingEvent ? 'Commit Changes' : 'Initialize Infrastructure'}
               </button>
             </div>
           </div>
@@ -495,11 +510,12 @@ export function AdminEvents() {
 
       {/* ── Event List ── */}
       {events.length === 0 ? (
-        <div className="glass-card p-16 text-center text-slate-500">
-          No events yet. Click "Create Event" to deploy your first competition.
+        <div style={{ padding: 128, textAlign: 'center', background: 'var(--surface)', border: '1px solid var(--border)', borderStyle: 'dashed', borderRadius: 16 }}>
+          <CalendarClock size={48} style={{ color: 'var(--text-muted)', opacity: 0.2, margin: '0 auto 24px' }} />
+          <p style={{ color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', fontSize: 12 }}>No deployments registered in the architecture.</p>
         </div>
       ) : (
-        <div className="space-y-4">
+        <div style={{ display: 'grid', gap: 20 }}>
           {events.map((evt) => {
             const participantCount = evt.participation?.[0]?.count || 0;
             const isExpanded       = expandedEventId === evt.id;
@@ -508,292 +524,202 @@ export function AdminEvents() {
             const guided           = guidedState[evt.id];
             const isGuidedActive   = guided?.active && isExpanded;
 
-            // Feature 12: pick question at current guided step index
-            // currentStep 1..target maps to unassigned[0..target-1]
             const unassignedQuestions = questions.filter(q => !assigned.includes(q.id));
             const guidedQuestionIndex = (guided?.currentStep ?? 1) - 1;
             const guidedQuestion = unassignedQuestions[guidedQuestionIndex] || unassignedQuestions[0] || null;
 
             return (
               <div key={evt.id}
-                className={`border rounded-2xl overflow-hidden transition-all
-                  ${evt.status === 'live'
-                    ? 'border-emerald-500/40 shadow-[0_0_20px_rgba(16,185,129,0.08)]'
-                    : evt.status === 'ended'
-                    ? 'border-slate-800'
-                    : 'border-white/8 hover:border-slate-700'}`}>
+                style={{
+                  background: 'var(--surface)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 12,
+                  overflow: 'hidden',
+                  transition: 'all 0.2s',
+                  ...(evt.status === 'live' ? { border: '1px solid var(--green)', boxShadow: '0 12px 48px rgba(16,185,129,0.1)' } : {})
+                }}
+              >
 
                 {/* Event Header Row */}
-                <div className="bg-slate-900/60 p-5 flex flex-col xl:flex-row gap-4 items-start xl:items-center justify-between">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-3 flex-wrap mb-2">
-                      <h3 className="text-xl font-black text-white">{evt.title}</h3>
-
-                      <span className={`text-[10px] px-2.5 py-1 rounded-full border font-black uppercase tracking-widest ${TYPE_COLORS[evt.type]}`}>
-                        {TYPE_LABELS[evt.type]}
-                      </span>
-
-                      {evt.status === 'live' && (
-                        <span className="bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest animate-pulse flex items-center gap-1">
-                          <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full" /> Live
+                <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
+                        <h3 style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{evt.title}</h3>
+                        <span style={{ fontSize: 9, fontWeight: 800, padding: '2px 8px', borderRadius: 4, border: '1px solid currentColor', textTransform: 'uppercase', letterSpacing: '0.04em', ...parseStyle(TYPE_COLORS[evt.type]) }}>
+                          {TYPE_LABELS[evt.type]}
                         </span>
-                      )}
+
+                        {evt.status === 'live' && (
+                          <span style={{ fontSize: 9, fontWeight: 800, padding: '2px 8px', borderRadius: 4, background: 'rgba(16,185,129,0.1)', color: 'var(--green)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'flex', alignItems: 'center', gap: 6 }}>
+                             <Activity size={10} /> Live Phase
+                          </span>
+                        )}
+                        {evt.status === 'upcoming' && (
+                          <span style={{ fontSize: 9, fontWeight: 800, padding: '2px 8px', borderRadius: 4, background: 'var(--elevated)', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', border: '1px solid var(--border)' }}>
+                            Upcoming
+                          </span>
+                        )}
+                      </div>
+                      
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 24, fontSize: 12, color: 'var(--text-muted)', flexWrap: 'wrap' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <CalendarClock size={14} /> {new Date(evt.start_at).toLocaleDateString()}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <Users size={14} /> <span style={{ color: 'var(--text-secondary)', fontWeight: 700 }}>{participantCount}</span> Registered
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <ListChecks size={14} /> <span style={{ color: 'var(--text-secondary)', fontWeight: 700 }}>{assigned.length}</span> Assigned
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                       {evt.status === 'upcoming' && (
-                        <span className="bg-blue-500/20 border border-blue-500/30 text-blue-400 text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest">
-                          Upcoming
-                        </span>
+                        <button onClick={() => initiateStatusChange(evt, 'live')} className="btn-primary" style={{ padding: '8px 16px', background: 'var(--green)', color: '#000', fontSize: 10 }}>
+                          Authorize Live Phase
+                        </button>
                       )}
-                      {evt.status === 'ended' && (
-                        <span className="bg-slate-700/50 border border-slate-700 text-slate-400 text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest">
-                          Ended
-                        </span>
+                      {evt.status === 'live' && (
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <button onClick={() => initiateStatusChange(evt, 'announce')} disabled={evt.results_announced} className="btn-primary" style={{ padding: '8px 16px', background: 'var(--amber)', color: '#000', fontSize: 10, opacity: evt.results_announced ? 0.5 : 1 }}>
+                            Announce Winner
+                          </button>
+                          <button onClick={() => initiateStatusChange(evt, 'ended')} className="btn-primary" style={{ padding: '8px 16px', background: 'var(--red)', color: '#fff', fontSize: 10 }}>
+                            End Session
+                          </button>
+                          <button onClick={() => setStatusPanelEventId(p => p === evt.id ? null : evt.id)} className="btn-ghost" style={{ padding: '8px 16px', fontSize: 10, background: statusPanelEventId === evt.id ? 'var(--blue)' : 'var(--elevated)' }}>
+                             Real-time Stats
+                          </button>
+                        </div>
                       )}
-                    </div>
-
-                    {evt.description && (
-                      <p className="text-slate-400 text-sm line-clamp-1 mb-3">{evt.description}</p>
-                    )}
-
-                    <div className="flex items-center gap-5 text-xs text-slate-500 font-mono flex-wrap">
-                      <span className="flex items-center gap-1.5 cursor-help" title={`UTC: ${evt.start_at} → ${evt.end_at}`}>
-                        <Clock className="w-3 h-3" />
-                        {new Date(evt.start_at).toLocaleString()} → {new Date(evt.end_at).toLocaleString()}
-                      </span>
-                      <span className="flex items-center gap-1.5">
-                        <Users className="w-3 h-3" />
-                        {participantCount} / {evt.max_participants || '∞'} participants
-                      </span>
-                      <span className="flex items-center gap-1.5">
-                        <ListChecks className="w-3 h-3" />
-                        {isExpanded ? assigned.length : '?'} questions
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Action Buttons */}
-                  <div className="flex items-center gap-2 flex-wrap shrink-0">
-                    {/* Lifecycle — Feature 10: guarded */}
-                    {evt.status === 'upcoming' && (
-                      <button onClick={() => initiateStatusChange(evt, 'live')}
-                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-black uppercase text-xs tracking-widest rounded-lg flex items-center gap-2 shadow-[0_0_12px_rgba(16,185,129,0.3)] transition-all">
-                        <Play className="w-3.5 h-3.5" /> Go Live
+                      
+                      <button onClick={() => toggleExpand(evt.id)} className="btn-ghost" style={{ padding: '8px 16px', fontSize: 10, background: isExpanded ? 'var(--blue)' : 'var(--elevated)', color: isExpanded ? '#000' : 'var(--text-primary)' }}>
+                        Question Matrix
                       </button>
-                    )}
-                    {evt.status === 'live' && (
-                      <>
-                        {/* 🏆 Announce Winner — triggers ceremony WITHOUT ending the event */}
-                        <button
-                          onClick={() => initiateStatusChange(evt, 'announce')}
-                          disabled={evt.results_announced}
-                          className="px-4 py-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed text-slate-950 font-black uppercase text-xs tracking-widest rounded-lg flex items-center gap-2 shadow-[0_0_16px_rgba(245,158,11,0.4)] transition-all"
-                        >
-                          <Trophy className="w-3.5 h-3.5" />
-                          {evt.results_announced ? 'Announced ✓' : 'Announce Winner'}
+
+                      <div style={{ display: 'flex', gap: 4, marginLeft: 8 }}>
+                        <button onClick={() => openEdit(evt)} className="btn-ghost" style={{ padding: 8, minHeight: 'unset', background: 'var(--elevated)' }} title="Edit Configuration">
+                          <Pencil size={14} style={{ color: 'var(--text-muted)' }} />
                         </button>
-
-                        {/* 🛑 End Event — fully closes the event */}
-                        <button onClick={() => initiateStatusChange(evt, 'ended')}
-                          className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white font-black uppercase text-xs tracking-widest rounded-lg flex items-center gap-2 shadow-[0_0_12px_rgba(220,38,38,0.3)] transition-all">
-                          <Square className="w-3.5 h-3.5 fill-white" /> End Event
+                        <button onClick={() => handleDelete(evt.id)} className="btn-ghost" style={{ padding: 8, minHeight: 'unset', background: 'var(--elevated)' }} title="Terminate Deployment">
+                          <Trash2 size={14} style={{ color: 'var(--red)' }} />
                         </button>
-
-                        {/* Status Panel toggle */}
-                        <button
-                          onClick={() => setStatusPanelEventId(p => p === evt.id ? null : evt.id)}
-                          className={`px-3 py-2 rounded-lg text-xs font-black uppercase tracking-widest border flex items-center gap-2 transition-all ${
-                            statusPanelEventId === evt.id
-                              ? 'bg-blue-600 text-white border-blue-500'
-                              : 'text-slate-400 border-slate-700 hover:border-blue-500 hover:text-blue-400'
-                          }`}>
-                          <Activity className="w-4 h-4" /> Status
-                        </button>
-                      </>
-                    )}
-                    <button onClick={() => setStatusDirect(evt.id, 'upcoming')} title="Reset to Upcoming"
-                      className="p-2 text-slate-500 hover:text-amber-400 hover:bg-amber-500/10 rounded-lg transition-all border border-transparent hover:border-amber-500/20">
-                      <RotateCcw className="w-4 h-4" />
-                    </button>
-
-                    {/* Questions Toggle */}
-                    <button onClick={() => toggleExpand(evt.id)}
-                      className={`px-3 py-2 rounded-lg text-xs font-black uppercase tracking-widest border flex items-center gap-2 transition-all
-                        ${isExpanded ? 'bg-purple-600 text-white border-purple-500' : 'text-slate-400 border-slate-700 hover:border-purple-500 hover:text-purple-400'}`}>
-                      <ListChecks className="w-4 h-4" />
-                      Questions
-                      {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                    </button>
-
-                    {/* Edit */}
-                    <button onClick={() => openEdit(evt)}
-                      className="p-2 text-slate-500 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg border border-transparent hover:border-blue-500/20 transition-all">
-                      <Pencil className="w-4 h-4" />
-                    </button>
-
-                    {/* Delete */}
-                    <button onClick={() => handleDelete(evt.id)}
-                      className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg border border-transparent hover:border-red-500/20 transition-all">
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
-                {/* Feature 3: Admin Status Panel */}
+                {/* Status Panel Body */}
                 {statusPanelEventId === evt.id && evt.status === 'live' && (
-                  <div className="border-t border-emerald-500/20 bg-slate-950/60 p-5">
-                    <h4 className="text-sm font-black text-emerald-400 uppercase tracking-widest flex items-center gap-2 mb-4">
-                      <Activity className="w-4 h-4" /> Participant Status — Live View
-                    </h4>
-                    <AdminStatusPanel
-                      eventId={evt.id}
-                      totalQuestions={isExpanded ? assigned.length : undefined}
-                    />
+                  <div style={{ padding: 32, background: 'var(--elevated)', borderTop: '1px solid var(--border)' }}>
+                     <AdminStatusPanel eventId={evt.id} totalQuestions={assigned.length} />
                   </div>
                 )}
 
                 {/* ── Inline Question Assignment Panel ── */}
-                {isExpanded && (
-                  <div className="border-t border-white/5 bg-slate-950/40 p-5">
-                    <div className="flex items-center justify-between mb-4">
-                      <h4 className="text-sm font-black text-purple-400 uppercase tracking-widest flex items-center gap-2">
-                        <ListChecks className="w-4 h-4" />
-                        Questions for "{evt.title}"
-                        <span className="text-white bg-purple-600 px-2.5 py-0.5 rounded-full text-xs">{assigned.length}</span>
+                {isExpanded && evt.type !== 'coding_challenge' && (
+                  <div style={{ borderTop: '1px solid var(--border)', background: 'var(--elevated)', padding: 32 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+                      <h4 style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                        Architectural Asset Assignment
                       </h4>
-                      <p className="text-xs text-slate-600">
-                        Mode: <span className="text-slate-400 font-bold">{TYPE_LABELS[evt.type]}</span>
+                      <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                        Protocol: <span style={{ color: 'var(--blue)', fontWeight: 800 }}>{TYPE_LABELS[evt.type]}</span>
                       </p>
                     </div>
 
                     {/* Feature 12: Guided selection mode */}
                     {isGuidedActive && (
-                      <div className="mb-6 p-4 bg-blue-900/20 border border-blue-500/30 rounded-xl">
-                        <div className="flex items-center justify-between mb-3">
-                          <p className="text-sm font-black text-blue-400">
-                            📋 Guided Selection — Question {guided.currentStep} of {guided.target}
+                      <div style={{ marginBottom: 32, padding: 24, background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.2)', borderRadius: 12 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                          <p style={{ fontSize: 12, fontWeight: 800, color: 'var(--blue)', textTransform: 'uppercase' }}>
+                            Personnel Selection Logic: Asset {guided.currentStep} / {guided.target}
                           </p>
-                          <button
-                            onClick={() => exitGuidedMode(evt.id)}
-                            className="text-xs text-slate-500 hover:text-white transition-colors font-bold uppercase tracking-widest"
-                          >
-                            Done Selecting
-                          </button>
+                          <button onClick={() => exitGuidedMode(evt.id)} style={{ fontSize: 9, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', background: 'transparent', border: 'none', cursor: 'pointer' }}>Exit Logic</button>
                         </div>
 
-                        {/* Progress */}
-                        <div className="flex gap-1 mb-4">
+                        <div style={{ display: 'flex', gap: 6, marginBottom: 24 }}>
                           {Array.from({ length: guided.target }, (_, i) => (
-                            <div
-                              key={i}
-                              className={`h-1.5 flex-1 rounded-full ${
-                                i < guided.currentStep - 1
-                                  ? 'bg-blue-500'
-                                  : i === guided.currentStep - 1
-                                  ? 'bg-blue-400 animate-pulse'
-                                  : 'bg-slate-700'
-                              }`}
-                            />
+                            <div key={i} style={{ height: 4, flex: 1, borderRadius: 2, background: i < guided.currentStep - 1 ? 'var(--blue)' : i === guided.currentStep - 1 ? 'var(--blue)' : 'var(--surface)', opacity: i === guided.currentStep - 1 ? 0.6 : 1 }} />
                           ))}
                         </div>
 
                         {guidedQuestion ? (
-                          <div className="bg-slate-900 border border-slate-700 rounded-xl p-4">
-                            <div className="flex items-center gap-3 mb-3">
-                              <span className={`text-[10px] border px-1.5 py-0.5 rounded font-bold uppercase ${
-                                guidedQuestion.difficulty === 'easy' ? 'text-emerald-400 border-emerald-500/30' :
-                                guidedQuestion.difficulty === 'hard' ? 'text-red-400 border-red-500/30' :
-                                'text-amber-400 border-amber-500/30'}`}>
-                                {guidedQuestion.difficulty}
-                              </span>
-                              <p className="text-sm text-white font-medium flex-1">{guidedQuestion.question}</p>
+                          <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 20 }}>
+                            <div style={{ marginBottom: 16 }}>
+                              <span style={{ fontSize: 9, fontWeight: 800, color: guidedQuestion.difficulty === 'easy' ? 'var(--green)' : 'var(--red)', background: 'var(--elevated)', border: '1px solid var(--border)', padding: '2px 8px', borderRadius: 4, textTransform: 'uppercase', marginBottom: 8, display: 'inline-block' }}>{guidedQuestion.difficulty}</span>
+                              <p style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.5 }}>{guidedQuestion.question}</p>
                             </div>
-                            <div className="flex gap-3">
-                              <button
-                                onClick={() => guidedAddQuestion(evt.id, guidedQuestion.id)}
-                                className="flex-1 py-2 bg-blue-600 hover:bg-blue-500 text-white font-black rounded-lg text-sm transition-colors flex items-center justify-center gap-2"
-                              >
-                                <Check className="w-4 h-4" /> Add
-                              </button>
-                              <button
-                                onClick={() => guidedSkipQuestion(evt.id)}
-                                className="flex-1 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-lg text-sm transition-colors flex items-center justify-center gap-2"
-                              >
-                                <SkipForward className="w-4 h-4" /> Skip
-                              </button>
+                            <div style={{ display: 'flex', gap: 12 }}>
+                              <button onClick={() => guidedAddQuestion(evt.id, guidedQuestion.id)} className="btn-primary" style={{ flex: 1, padding: '10px', background: 'var(--blue)', color: '#000', fontSize: 11 }}>Authorize Asset</button>
+                              <button onClick={() => guidedSkipQuestion(evt.id)} className="btn-ghost" style={{ flex: 1, padding: '10px', fontSize: 11 }}>Skip Selection</button>
                             </div>
                           </div>
                         ) : (
-                          <p className="text-slate-500 text-sm text-center py-4">No more questions available in the bank.</p>
+                          <p style={{ color: 'var(--text-muted)', fontSize: 12, textAlign: 'center' }}>Bank exhausted. No available assets matching parameters.</p>
                         )}
                       </div>
                     )}
 
-                    {/* Assigned list */}
-                    {assigned.length > 0 && (
-                      <div className="mb-4 space-y-2">
-                        {assignedMeta.map((meta, i) => {
-                          const q = questions.find(q => q.id === meta.question_id);
-                          if (!q) return null;
-                          return (
-                            <div key={meta.id} className="flex items-center gap-3 bg-purple-900/10 border border-purple-500/20 rounded-lg px-4 py-2.5">
-                              <span className="w-6 h-6 shrink-0 bg-purple-600 text-white text-xs font-black rounded flex items-center justify-center">{i+1}</span>
-                              <span className={`text-[10px] border px-1.5 py-0.5 rounded font-bold uppercase ${
-                                q.difficulty === 'easy' ? 'text-emerald-400 border-emerald-500/30' :
-                                q.difficulty === 'hard' ? 'text-red-400 border-red-500/30' :
-                                'text-amber-400 border-amber-500/30'}`}>
-                                {q.difficulty}
-                              </span>
-                              <p className="text-sm text-white flex-1 truncate">{q.question}</p>
-                              <button onClick={() => removeQuestion(evt.id, q.id)}
-                                className="text-slate-500 hover:text-red-400 transition-colors" title="Remove">
-                                <X className="w-4 h-4" />
-                              </button>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
+                    {/* Matrix List */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 32 }}>
+                       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                         <label style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Assigned Assets ({assigned.length})</label>
+                         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                           {assignedMeta.map((meta, i) => {
+                             const q = questions.find(q => q.id === meta.question_id);
+                             if (!q) return null;
+                             return (
+                               <div key={meta.id} style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'var(--surface)', border: '1px solid var(--border)', padding: '10px 16px', borderRadius: 8 }}>
+                                 <span style={{ width: 20, height: 20, borderRadius: 4, background: 'var(--elevated)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 800, color: 'var(--text-muted)' }}>{i+1}</span>
+                                 <p style={{ flex: 1, fontSize: 12, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{q.question}</p>
+                                 <button onClick={() => removeQuestion(evt.id, q.id)} style={{ color: 'var(--text-muted)', cursor: 'pointer' }} className="hover-red">
+                                   <X size={14} />
+                                 </button>
+                               </div>
+                             );
+                           })}
+                           {assigned.length === 0 && <p style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic', padding: 12, background: 'var(--surface)', borderRadius: 8, border: '1px solid var(--border)', textAlign: 'center' }}>Matrix unpopulated.</p>}
+                         </div>
+                       </div>
 
-                    {/* All questions selector (shown after guided or if no guided) */}
-                    {!isGuidedActive && (
-                      <div className="max-h-64 overflow-y-auto custom-scrollbar space-y-2 border border-white/5 rounded-xl p-3 bg-slate-900/30">
-                        {questions.length === 0 && (
-                          <p className="text-center text-slate-500 py-6 text-sm">
-                            No questions in bank. Go to the Questions page first.
-                          </p>
-                        )}
-                        {questions.map(q => {
-                          const isAssigned = assigned.includes(q.id);
-                          return (
-                            <div key={q.id} onClick={() => toggleQuestion(evt.id, q.id)}
-                              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all border
-                                ${isAssigned
-                                  ? 'bg-purple-900/20 border-purple-500/40'
-                                  : 'bg-slate-900 border-transparent hover:border-slate-700'}`}>
-                              <div className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0
-                                ${isAssigned ? 'bg-purple-500 border-purple-400' : 'border-slate-600'}`}>
-                                {isAssigned && <Check className="w-3 h-3 text-white" />}
-                              </div>
-                              <span className={`text-[10px] border px-1.5 py-0.5 rounded font-bold uppercase shrink-0 ${
-                                q.difficulty === 'easy' ? 'text-emerald-400 border-emerald-500/30' :
-                                q.difficulty === 'hard' ? 'text-red-400 border-red-500/30' :
-                                'text-amber-400 border-amber-500/30'}`}>
-                                {q.difficulty}
-                              </span>
-                              <p className={`text-sm flex-1 truncate font-medium ${isAssigned ? 'text-white' : 'text-slate-400'}`}>
-                                {q.question}
-                              </p>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
+                       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                         <label style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Global Asset Bank</label>
+                         {!isGuidedActive && (
+                           <div style={{ maxHeight: 320, overflowY: 'auto', paddingRight: 8 }} className="custom-scrollbar">
+                             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                               {questions.map(q => {
+                                 const isAssigned = assigned.includes(q.id);
+                                 return (
+                                   <div key={q.id} onClick={() => toggleQuestion(evt.id, q.id)}
+                                     style={{ display: 'flex', alignItems: 'center', gap: 12, background: isAssigned ? 'rgba(59,130,246,0.06)' : 'var(--surface)', border: isAssigned ? '1px solid var(--blue)' : '1px solid var(--border)', padding: '10px 16px', borderRadius: 8, cursor: 'pointer', transition: 'all 0.2s' }}>
+                                     <div style={{ width: 16, height: 16, borderRadius: 4, border: '1px solid var(--border)', background: isAssigned ? 'var(--blue)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                       {isAssigned && <Check size={10} style={{ color: '#000' }} />}
+                                     </div>
+                                     <p style={{ flex: 1, fontSize: 12, color: isAssigned ? 'var(--text-primary)' : 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{q.question}</p>
+                                     <span style={{ fontSize: 8, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{q.difficulty}</span>
+                                   </div>
+                                 );
+                               })}
+                             </div>
+                           </div>
+                         )}
+                         {isGuidedActive && <div style={{ height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, borderStyle: 'dashed' }}>
+                             <p style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Guided Selection Override Active</p>
+                           </div>}
+                       </div>
+                    </div>
+                  </div>
+                )}
 
-                    {assigned.length === 0 && !isGuidedActive && (
-                      <div className="flex items-center gap-2 mt-3 text-amber-400 text-xs font-bold bg-amber-500/10 border border-amber-500/20 rounded-lg px-4 py-2">
-                        <AlertTriangle className="w-4 h-4 shrink-0" />
-                        No questions assigned — participants will see an empty quiz!
-                      </div>
-                    )}
+                {/* Hint for coding events */}
+                {isExpanded && evt.type === 'coding_challenge' && (
+                  <div style={{ borderTop: '1px solid var(--border)', background: 'var(--elevated)', padding: 48, textAlign: 'center' }}>
+                    <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>Algorithmic configurations are managed in the specialized Coding editor.</p>
+                    <Link to="/admin/coding-problems" style={{ marginTop: 16, display: 'inline-block', fontSize: 11, fontWeight: 800, color: 'var(--blue)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Open Controller Matrix</Link>
                   </div>
                 )}
               </div>
@@ -805,7 +731,3 @@ export function AdminEvents() {
   );
 }
 
-// ── Tiny helpers ──────────────────────────────────────────
-const Label = ({ children }) => (
-  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">{children}</label>
-);

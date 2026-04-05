@@ -14,35 +14,7 @@ export function Lobby() {
   // Base Data
   const [ticket, setTicket] = useState(null);
   const [eventData, setEventData] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  // Social Data
-  const [participants, setParticipants] = useState([]);
-  const [teams, setTeams] = useState([]);
-  const [totalJoined, setTotalJoined] = useState(0);
-
-  // Realtime Data
-  const [liveCount, setLiveCount] = useState(0);
-  const [timeLeft, setTimeLeft] = useState('');
-
-  // Feature 11: notification state
-  const [notifPermission, setNotifPermission] = useState(
-    typeof Notification !== 'undefined' ? Notification.permission : 'denied'
-  );
-  const notifTimer5Ref = useRef(null);
-  const notifTimerStartRef = useRef(null);
-
-  // FIX #22: isMounted guard prevents stale navigate calls after unmount
-  const isMountedRef = useRef(true);
-  useEffect(() => {
-    isMountedRef.current = true;
-    return () => {
-      isMountedRef.current = false;
-      // Feature 11: clear notification timers on unmount
-      if (notifTimer5Ref.current) clearTimeout(notifTimer5Ref.current);
-      if (notifTimerStartRef.current) clearTimeout(notifTimerStartRef.current);
-    };
-  }, []);
+  const eventTypeRef = useRef(null);
 
   useEffect(() => {
     async function loadData() {
@@ -66,16 +38,24 @@ export function Lobby() {
       }
       setTicket(ticketData);
       setEventData(ticketData.events);
+      setEventType(ticketData.events.type);
+      eventTypeRef.current = ticketData.events.type;
+
+      // If results announced or event ended, redirect to results — not lobby
+      if (ticketData.events.results_announced === true || ticketData.events.status === 'ended') {
+        navigate(`/results/${id}`);
+        return;
+      }
 
       // If already live, just kick them in!
       if (ticketData.events.status === 'live') {
-        navigate(`/live/${id}`);
+        navigate(ticketData.events.type === 'coding_challenge' ? `/live-coding/${id}` : `/live/${id}`);
         return;
       }
 
       // Feature 2: Preload questions into Zustand store while waiting in lobby
-      // This means when the event goes live and we navigate, LiveEvent already has the data
-      if (ticketData.events.status === 'upcoming') {
+      // Coding events have no event_questions — skip this fetch for them
+      if (ticketData.events.status === 'upcoming' && ticketData.events.type !== 'coding_challenge') {
         supabase
           .from('event_questions')
           .select('*, question_bank(*)')
@@ -124,7 +104,7 @@ export function Lobby() {
     if (fiveMinBefore > now) {
       notifTimer5Ref.current = setTimeout(() => {
         if (document.hidden) {
-          new Notification(`EventX: ${eventData.title} starts in 5 minutes!`, {
+          new Notification(`Zentrix: ${eventData.title} starts in 5 minutes!`, {
             body: 'Get ready — the competition is about to begin.',
             icon: '/icon-192x192.png',
           });
@@ -136,7 +116,7 @@ export function Lobby() {
     if (startMs > now) {
       notifTimerStartRef.current = setTimeout(() => {
         if (document.hidden) {
-          new Notification(`EventX: ${eventData.title} is LIVE now!`, {
+          new Notification(`Zentrix: ${eventData.title} is LIVE now!`, {
             body: 'Click to join the competition.',
             icon: '/icon-192x192.png',
           });
@@ -166,22 +146,40 @@ export function Lobby() {
     // 1. Setup Status Subscription / Fallback Polling
     const statusChannel = supabase.channel(`event-${id}-updates`)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'events', filter: `id=eq.${id}` }, (payload) => {
+        if (payload.new.results_announced === true || payload.new.status === 'ended') {
+          if (fallbackPoller) {
+            clearInterval(fallbackPoller);
+            fallbackPoller = null;
+          }
+          if (isMountedRef.current) navigate(`/results/${id}`);
+          return;
+        }
         if (payload.new.status === 'live') {
           // FIX #22: clear poller BEFORE navigating to prevent stale .then() callbacks
           if (fallbackPoller) {
             clearInterval(fallbackPoller);
             fallbackPoller = null;
           }
-          if (isMountedRef.current) navigate(`/live/${id}`);
+          if (isMountedRef.current) {
+            // Use payload type if available, otherwise fallback to ref
+            const type = payload.new.type || eventTypeRef.current;
+            navigate(type === 'coding_challenge' ? `/live-coding/${id}` : `/live/${id}`);
+          }
         }
       })
       .subscribe();
 
     fallbackPoller = setInterval(async () => {
-      const { data } = await supabase.from('events').select('status').eq('id', id).single();
-      if (data && data.status === 'live' && isMountedRef.current) {
+      const { data } = await supabase.from('events').select('status, results_announced, type').eq('id', id).single();
+      if (!data || !isMountedRef.current) return;
+      if (data.results_announced === true || data.status === 'ended') {
         if (fallbackPoller) clearInterval(fallbackPoller);
-        navigate(`/live/${id}`);
+        navigate(`/results/${id}`);
+        return;
+      }
+      if (data.status === 'live') {
+        if (fallbackPoller) clearInterval(fallbackPoller);
+        navigate(data.type === 'coding_challenge' ? `/live-coding/${id}` : `/live/${id}`);
       }
     }, 5000);
 
@@ -229,185 +227,155 @@ export function Lobby() {
   }, [eventData]);
 
 
-  if (loading || !eventData) return <div className="flex justify-center p-20"><div className="w-12 h-12 border-4 border-slate-800 border-t-purple-500 rounded-full animate-spin"></div></div>;
+  if (loading || !eventData) return <div style={{ display: 'flex', justifyContent: 'center', padding: '80px 0' }}><div style={{ width: 40, height: 40, border: '3px solid var(--elevated)', borderTopColor: 'var(--blue)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} /></div>;
 
   return (
-    <div className="max-w-6xl mx-auto pb-16">
+    <div style={{ maxWidth: 1100, margin: '0 auto', paddingBottom: 64 }}>
       
       {/* Sponsor Banner */}
       {eventData.sponsor_logo_url && (
-        <div className="w-full h-24 mb-6 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center p-4">
-          <p className="text-xs text-slate-500 uppercase tracking-widest mr-4">Sponsored By</p>
-          <img src={eventData.sponsor_logo_url} alt="Sponsor" className="max-h-12 object-contain grayscale-[0.5] hover:grayscale-0 transition-all opacity-80 hover:opacity-100" />
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, padding: '12px 20px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 20 }}>
+          <p style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>Sponsored By</p>
+          <img src={eventData.sponsor_logo_url} alt="Sponsor" style={{ maxHeight: 40, objectFit: 'contain', opacity: 0.85 }} />
         </div>
       )}
 
       {/* Feature 11: Notification permission prompt */}
       {notifPermission !== 'granted' && notifPermission !== 'denied' && (
-        <div className="mb-4 flex items-center gap-3 p-4 bg-blue-500/10 border border-blue-500/25 rounded-xl">
-          <Bell className="w-5 h-5 text-blue-400 shrink-0" />
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold text-white">Get notified when this event starts</p>
-            <p className="text-xs text-slate-400">We'll notify you 5 minutes before the event begins.</p>
+        <div style={{ background: 'rgba(37,99,235,0.08)', border: '1px solid rgba(37,99,235,0.2)', borderRadius: 6, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+          <Bell size={14} style={{ color: 'var(--blue)', flexShrink: 0 }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 2 }}>Get notified when this starts</p>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>We'll alert you 5 minutes before the event begins.</p>
           </div>
-          <button
-            onClick={requestNotification}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-black uppercase tracking-widest rounded-lg transition-colors shrink-0"
-          >
+          <button onClick={requestNotification} className="btn-primary" style={{ fontSize: 12, padding: '5px 12px', flexShrink: 0 }}>
             Enable
           </button>
         </div>
       )}
       {notifPermission === 'granted' && (
-        <div className="mb-4 flex items-center gap-2 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-xs text-emerald-400 font-bold">
-          <Bell className="w-4 h-4 shrink-0" />
-          Notifications enabled — you'll be alerted when this event starts
+        <div style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: 6, padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+          <Bell size={13} style={{ color: 'var(--green)', flexShrink: 0 }} />
+          <span style={{ fontSize: 12, color: 'var(--green)' }}>Notifications enabled — you'll be alerted when this event starts</span>
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 20 }} id="lobby-grid">
+        <style>{`@media (min-width: 1024px) { #lobby-grid { grid-template-columns: 1fr 300px; } }`}</style>
         {/* Main Action Area */}
-        <div className="col-span-1 lg:col-span-2 space-y-6">
-          <div className="glass-card overflow-hidden relative">
-            <div className="absolute inset-0 bg-blue-500/5 pulse-bg"></div>
-            
-            <div className="p-10 flex flex-col items-center justify-center text-center border-b border-white/5 relative z-10">
-              <span className="px-3 py-1 text-xs rounded-full font-bold uppercase tracking-widest bg-blue-500/20 text-blue-400 mb-4 inline-block border border-blue-500/30">
-                {eventData.type.replace('_', ' ')}
-              </span>
-              <h1 className="text-4xl md:text-5xl font-black text-white tracking-tight mb-8">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+            <div style={{ padding: '32px 24px', textAlign: 'center', borderBottom: '1px solid var(--border)' }}>
+              <span className="badge badge--blue" style={{ marginBottom: 12, display: 'inline-flex' }}>{eventData.type.replace('_', ' ')}</span>
+              <h1 style={{ fontSize: 24, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 24, wordBreak: 'break-word' }}>
                 {eventData.title}
               </h1>
 
-              <div className="bg-slate-900/80 backdrop-blur-sm px-8 py-6 rounded-2xl border border-slate-700 shadow-2xl mb-8 transform transition-transform hover:scale-105">
-                <p className="text-sm text-slate-400 uppercase tracking-widest font-bold mb-2 flex items-center justify-center gap-2">
-                  <Clock className="w-4 h-4"/> Starts In
+              <div style={{ background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: '20px 28px', marginBottom: 20, display: 'inline-block' }}>
+                <p style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                  <Clock size={12} /> Starts In
                 </p>
-                <div className="text-4xl md:text-5xl font-mono font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400 tracking-wider">
+                <div style={{ fontSize: 32, fontFamily: 'ui-monospace, monospace', fontWeight: 700, color: 'var(--amber)', fontVariantNumeric: 'tabular-nums', letterSpacing: '0.05em' }}>
                   {timeLeft}
                 </div>
               </div>
 
-              <div className="flex items-center gap-3 text-emerald-400 bg-emerald-500/10 px-6 py-4 rounded-xl border border-emerald-500/20">
-                <span className="relative flex h-4 w-4">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-4 w-4 bg-emerald-500"></span>
-                </span>
-                <span className="font-bold text-lg tracking-wide uppercase">Waiting for Admin to launch...</span>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                <span className="live-dot" />
+                <span style={{ fontSize: 13, color: 'var(--green)', fontWeight: 500 }}>Waiting for admin to launch...</span>
               </div>
             </div>
 
-            <div className="bg-slate-900/50 p-6 flex justify-between items-center relative z-10">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-center text-purple-400">
-                  <Radio className="w-6 h-6 animate-pulse" />
-                </div>
+            <div style={{ padding: '14px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--elevated)', flexWrap: 'wrap', gap: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Radio size={14} style={{ color: 'var(--blue)' }} />
                 <div>
-                  <p className="text-sm font-bold text-white leading-tight">{liveCount} Online Now</p>
-                  <p className="text-xs text-slate-400">Looking at this page</p>
+                  <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{liveCount} Online Now</p>
+                  <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>On this page</p>
                 </div>
               </div>
-
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-xl bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-blue-400">
-                  <Users className="w-6 h-6" />
-                </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Users size={14} style={{ color: 'var(--text-muted)' }} />
                 <div>
-                  <p className="text-sm font-bold text-white leading-tight">{totalJoined} Registered</p>
-                  <p className="text-xs text-slate-400">Total Participants</p>
+                  <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{totalJoined} Registered</p>
+                  <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>Total participants</p>
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="glass-card p-6">
-              <h3 className="text-sm font-bold text-white uppercase tracking-widest mb-4 flex items-center gap-2"><Activity className="w-4 h-4 text-blue-400"/> Current Roster</h3>
-              <div className="flex flex-wrap gap-2">
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 12 }} id="lobby-roster-grid">
+            <style>{`@media (min-width: 640px) { #lobby-roster-grid { grid-template-columns: repeat(2, 1fr); } }`}</style>
+            <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, padding: 16 }}>
+              <p className="t-section-label" style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}><Activity size={11} /> Current Roster</p>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                 {participants.map((u, i) => (
-                  <div key={i} className="w-10 h-10 rounded-full bg-slate-800 border-2 border-slate-700 flex items-center justify-center overflow-hidden shrink-0 group relative cursor-pointer hover:border-blue-500 transition-colors">
-                    {u?.avatar_url ? (
-                      <img src={u.avatar_url} alt={u.name} className="w-full h-full object-cover" />
-                    ) : (
-                      <span className="text-xs font-bold text-slate-400 uppercase">{u?.name?.charAt(0)}</span>
-                    )}
-                    {/* Tooltip */}
-                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-slate-800 text-xs text-white rounded opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none transition-opacity">
-                      {u?.name || 'Participant'}
-                    </div>
+                  <div key={i} className="avatar-circle" title={u?.name || 'Participant'} style={{ cursor: 'default' }}>
+                    {u?.avatar_url
+                      ? <img src={u.avatar_url} alt={u.name} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
+                      : (u?.name?.charAt(0) || '?')
+                    }
                   </div>
                 ))}
                 {totalJoined > 20 && (
-                  <div className="w-10 h-10 rounded-full bg-slate-900 border-2 border-slate-800 flex items-center justify-center text-xs font-bold text-slate-400 shrink-0">
-                    +{totalJoined - 20}
-                  </div>
+                  <div className="avatar-circle" style={{ color: 'var(--text-muted)', fontSize: 11 }}>+{totalJoined - 20}</div>
                 )}
+                {participants.length === 0 && <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>No participants yet</p>}
               </div>
             </div>
 
             {teams.length > 0 && (
-              <div className="glass-card p-6">
-                 <h3 className="text-sm font-bold text-white uppercase tracking-widest mb-4 flex items-center gap-2"><Users className="w-4 h-4 text-purple-400"/> Registered Teams</h3>
-                 <div className="space-y-3 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
-                    {teams.map(t => (
-                      <div key={t.id} className="flex justify-between items-center bg-slate-900/50 p-3 rounded-lg border border-white/5">
-                        <span className="text-sm font-bold text-slate-200">{t.name}</span>
-                        <span className="text-xs font-medium bg-slate-800 px-2 py-1 rounded text-purple-300">
-                          {/* FIX #23: cosmetic fix — show 0 when team_members is empty, not misleading 1 */}
-                          {(Array.isArray(t.team_members) && t.team_members[0]?.count) || 0} Members
-                        </span>
-                      </div>
-                    ))}
-                 </div>
+              <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, padding: 16 }}>
+                <p className="t-section-label" style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}><Users size={11} /> Teams</p>
+                <div style={{ maxHeight: 180, overflowY: 'auto' }} className="custom-scrollbar">
+                  {teams.map(t => (
+                    <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
+                      <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)', wordBreak: 'break-word' }}>{t.name}</span>
+                      <span style={{ fontSize: 11, color: 'var(--text-muted)', flexShrink: 0, marginLeft: 8 }}>
+                        {(Array.isArray(t.team_members) && t.team_members[0]?.count) || 0} members
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>
         </div>
 
-        {/* Aside - Digital Ticket panel */}
-        <div className="col-span-1">
-          <div className="relative w-full max-w-sm mx-auto">
-            {/* Pass cutout edges effect */}
-            <div className="absolute left-[-15px] top-1/3 -mt-4 w-8 h-8 rounded-full bg-slate-950 z-20"></div>
-            <div className="absolute right-[-15px] top-1/3 -mt-4 w-8 h-8 rounded-full bg-slate-950 z-20"></div>
-
-            <div className="glass-card border border-slate-700 shadow-2xl relative z-10 flex flex-col items-center">
-              <div className="w-full bg-gradient-to-br from-blue-900/80 to-slate-900 p-6 text-center border-b-[3px] border-dashed border-slate-950 rounded-t-xl">
-                <h2 className="text-xl font-black text-white mb-1 uppercase tracking-wider">Your Ticket</h2>
-                
-                {ticket.teams ? (
-                  <div className="mt-4 bg-slate-950/50 backdrop-blur-md px-4 py-2 rounded-lg border border-purple-500/30">
-                    <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Team</p>
-                    <p className="text-base font-bold text-purple-300 truncate">{ticket.teams.name}</p>
-                  </div>
-                ) : (
-                  <div className="mt-4 bg-slate-950/50 backdrop-blur-md px-4 py-2 rounded-lg border border-blue-500/30">
-                    <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Entry</p>
-                    <p className="text-base font-bold text-blue-300">Solo Competitor</p>
-                  </div>
-                )}
-              </div>
-
-              <div className="bg-slate-900/80 w-full p-8 flex flex-col items-center rounded-b-xl border-t border-white/5">
-                <div className="bg-white p-3 rounded-xl shadow-lg mb-4">
-                  <QRCodeSVG 
-                    value={JSON.stringify({ pid: ticket.id, uid: user.id })} 
-                    size={160}
-                    level="L"
-                    includeMargin={false}
-                  />
+        {/* Digital Ticket panel */}
+        <div>
+          <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', textAlign: 'center' }}>
+              <p style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 10 }}>Your Ticket</p>
+              {ticket.teams ? (
+                <div style={{ background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 6, padding: '8px 14px', display: 'inline-block' }}>
+                  <p style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 2 }}>Team</p>
+                  <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', wordBreak: 'break-word' }}>{ticket.teams.name}</p>
                 </div>
-                
-                <p className="text-[10px] text-slate-500 uppercase tracking-[0.2em] font-bold">Ticket ID</p>
-                <p className="font-mono text-slate-300 tracking-wider font-medium mt-1 text-xs">{ticket.id.split('-')[0]}</p>
-              </div>
+              ) : (
+                <div style={{ background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 6, padding: '8px 14px', display: 'inline-block' }}>
+                  <p style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 2 }}>Entry</p>
+                  <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>Solo Competitor</p>
+                </div>
+              )}
             </div>
-            
-            <p className="text-center text-xs text-slate-500 mt-6 px-4">
-              Do not close this page. You will be automatically teleported into the live arena when the event begins.
-            </p>
+
+            <div style={{ padding: '24px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+              <div style={{ background: '#fff', padding: 12, borderRadius: 6, marginBottom: 16 }}>
+                <QRCodeSVG
+                  value={JSON.stringify({ pid: ticket.id, uid: user.id })}
+                  size={148}
+                  level="L"
+                  includeMargin={false}
+                />
+              </div>
+              <p style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)' }}>Ticket ID</p>
+              <p style={{ fontFamily: 'ui-monospace, monospace', fontSize: 12, color: 'var(--text-secondary)', marginTop: 4, letterSpacing: '0.1em' }}>{ticket.id.split('-')[0]}</p>
+            </div>
           </div>
+          <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 12, textAlign: 'center', lineHeight: 1.5 }}>
+            Page auto-redirects when event starts. Do not close this tab.
+          </p>
         </div>
 
       </div>

@@ -106,14 +106,14 @@ export function NormalQuizMode({ questions, answers, answerQuestion, onSubmit, i
   // ── Review Screen ────────────────────────────────────────────
   if (reviewMode) {
     return (
-      <div className="max-w-3xl mx-auto px-4 pt-8 pb-32 space-y-4">
-        <div className="glass-card p-6 border-blue-500/30 border">
-          <h2 className="text-xl font-black text-white mb-1">Review Your Answers</h2>
-          <p className="text-sm text-slate-400 mb-6">
-            {answeredCount}/{total} answered. Click any question to change your answer.
+      <div style={{ maxWidth: 800, margin: '0 auto', padding: '32px 16px 120px' }}>
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, padding: 24, marginBottom: 24 }}>
+          <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>Review Your Answers</h2>
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 20 }}>
+            {answeredCount}/{total} questions answered. Click any card to revisit.
           </p>
 
-          <div className="space-y-2">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {questions.map((q, i) => {
               const myAnswer = answers[q.id];
               const answered = !!myAnswer;
@@ -121,25 +121,44 @@ export function NormalQuizMode({ questions, answers, answerQuestion, onSubmit, i
                 <button
                   key={q.id}
                   onClick={() => setReviewJumpTo(i)}
-                  className={`w-full text-left flex items-center gap-4 p-4 rounded-xl border transition-all ${
-                    answered
-                      ? 'bg-emerald-900/10 border-emerald-500/20 hover:border-emerald-500/40'
-                      : 'bg-amber-900/10 border-amber-500/20 hover:border-amber-500/40'
-                  }`}
+                  className="card-hover"
+                  style={{
+                    width: '100%',
+                    textAlign: 'left',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 16,
+                    padding: 16,
+                    background: answered ? 'rgba(16,185,129,0.04)' : 'var(--elevated)',
+                    border: `1px solid ${answered ? 'rgba(16,185,129,0.2)' : 'var(--border)'}`,
+                    borderRadius: 8,
+                    cursor: 'pointer'
+                  }}
                 >
-                  <div className={`w-8 h-8 shrink-0 rounded-full flex items-center justify-center font-black text-sm ${
-                    answered ? 'bg-emerald-600 text-white' : 'bg-amber-600/30 text-amber-400 border border-amber-500/40'
-                  }`}>
-                    {answered ? <CheckCircle2 className="w-4 h-4" /> : i + 1}
+                  <div style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: '50%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 12,
+                    fontWeight: 800,
+                    background: answered ? 'var(--green)' : 'var(--surface)',
+                    color: answered ? '#000' : 'var(--text-muted)',
+                    border: answered ? 'none' : '1px solid var(--border)',
+                    flexShrink: 0
+                  }}>
+                    {answered ? <CheckCircle2 size={14} /> : i + 1}
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm text-white font-medium truncate">{getQuestionText(q)}</p>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{getQuestionText(q)}</p>
                     {answered
-                      ? <p className="text-xs text-emerald-400 truncate mt-0.5">→ {myAnswer}</p>
-                      : <p className="text-xs text-amber-400 mt-0.5">Not answered — click to answer</p>
+                      ? <p style={{ fontSize: 11, color: 'var(--green)', marginTop: 2 }}>✓ {myAnswer}</p>
+                      : <p style={{ fontSize: 11, color: 'var(--amber)', marginTop: 2 }}>Not answered</p>
                     }
                   </div>
-                  <RotateCcw className="w-4 h-4 text-slate-500 shrink-0" />
+                  <RotateCcw size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
                 </button>
               );
             })}
@@ -147,20 +166,19 @@ export function NormalQuizMode({ questions, answers, answerQuestion, onSubmit, i
         </div>
 
         {/* Fixed submit bar */}
-        <div className="fixed bottom-0 left-0 right-0 bg-slate-950/90 backdrop-blur-xl border-t border-slate-800 p-4 z-50">
-          <div className="max-w-3xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 px-4">
-            <div className="text-slate-400 text-sm">
-              <span className="text-white font-bold">{answeredCount}</span> of {total} answered
-              {answeredCount < total && (
-                <span className="text-amber-400 ml-2 font-bold">({total - answeredCount} unanswered)</span>
-              )}
-            </div>
+        <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: 'var(--surface)', borderTop: '1px solid var(--border)', padding: '16px 20px', zIndex: 60 }}>
+          <div style={{ maxWidth: 800, margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+            <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+              <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{answeredCount}</span> of {total} questions answered
+              {answeredCount < total && <span style={{ color: 'var(--amber)', marginLeft: 8 }}>( {total - answeredCount} remaining )</span>}
+            </p>
             <button
               onClick={handleSubmit}
               disabled={isSubmitting || submitLockedRef.current}
-              className="px-8 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-black rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_15px_rgba(16,185,129,0.4)] disabled:shadow-none uppercase tracking-widest text-sm"
+              className="btn-primary"
+              style={{ minWidth: 160, padding: '10px 24px' }}
             >
-              {isSubmitting ? 'Submitting...' : 'Submit Quiz'}
+              {isSubmitting ? 'Submitting...' : 'Finish Event'}
             </button>
           </div>
         </div>
@@ -170,111 +188,120 @@ export function NormalQuizMode({ questions, answers, answerQuestion, onSubmit, i
 
   // ── Single Question View ─────────────────────────────────────
   return (
-    <div className="max-w-3xl mx-auto pb-32">
+    <div style={{ maxWidth: 800, margin: '0 auto', padding: '24px 16px 120px' }}>
 
       {/* Progress bar */}
-      <div className="quiz-progress-bar">
+      <div style={{ display: 'flex', gap: 4, height: 4, marginBottom: 24, borderRadius: 2, overflow: 'hidden', background: 'var(--elevated)' }}>
         {questions.map((q, i) => {
           const isAnswered = !!answers[q.id];
           const isCurrent = i === currentIndex;
-          const cls = isAnswered
-            ? 'quiz-progress-segment quiz-progress-segment--answered'
-            : isCurrent
-            ? 'quiz-progress-segment quiz-progress-segment--current'
-            : 'quiz-progress-segment';
-          return <div key={q.id} className={cls} />;
+          return (
+            <div
+              key={q.id}
+              style={{
+                flex: 1,
+                background: isCurrent ? 'var(--blue)' : isAnswered ? 'var(--green)' : 'transparent',
+                opacity: isCurrent || isAnswered ? 1 : 0.2,
+                transition: 'all 0.3s'
+              }}
+            />
+          );
         })}
       </div>
 
-      {/* Q counter */}
-      <div className="flex items-center justify-between px-6 py-4">
-        <span className="text-xs text-slate-500 font-bold uppercase tracking-widest">
-          Question {currentIndex + 1} of {total}
-        </span>
-        <span className="text-xs text-slate-500">
-          {answeredCount} answered
-        </span>
-      </div>
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '32px 24px', position: 'relative' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+            Part {currentIndex + 1} of {total}
+          </span>
+          <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)' }}>
+            Progress: {Math.round((answeredCount / total) * 100)}%
+          </span>
+        </div>
 
-      {/* Question card */}
-      <div className="px-4">
-        <div className="glass-card p-8">
-          <div className="flex gap-4 mb-8">
-            <div className="w-10 h-10 shrink-0 bg-blue-600 rounded-full flex items-center justify-center font-black text-lg text-white">
-              {currentIndex + 1}
+        <div style={{ display: 'flex', gap: 16, marginBottom: 32 }}>
+          <div style={{ width: 36, height: 36, borderRadius: 6, background: 'var(--blue)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 800, flexShrink: 0 }}>
+            {currentIndex + 1}
+          </div>
+          <h2 style={{ fontSize: 18, fontWeight: 600, color: 'var(--text-primary)', lineHeight: 1.6, paddingTop: 4 }}>
+            {getQuestionText(currentQ) || <span style={{ color: 'var(--amber)', fontStyle: 'italic' }}>Question content unavailable</span>}
+          </h2>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {getOptions(currentQ).length === 0 ? (
+            <div style={{ padding: 16, background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 8, color: 'var(--amber)', fontSize: 13, fontWeight: 600 }}>
+              ⚠ No selectable options found for this question
             </div>
-            <h2 className="text-xl font-medium text-white pt-1 leading-relaxed">
-              {getQuestionText(currentQ) || (
-                <span className="text-amber-400 italic">
-                  Question text not found — check event_questions data shape in console.
-                </span>
-              )}
-            </h2>
-          </div>
-
-          <div className="space-y-3">
-            {getOptions(currentQ).length === 0 ? (
-              <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-400 text-sm font-bold">
-                ⚠ No options found for this question. Check the question bank data.
-              </div>
-            ) : (
-              getOptions(currentQ).map((opt, i) => {
-                const isSelected = selectedOption === opt;
-                return (
-                  <button
-                    key={i}
-                    onClick={() => handleOptionClick(opt)}
-                    disabled={advancing}
-                    className={`w-full flex items-center gap-4 p-4 rounded-xl border cursor-pointer transition-all text-left ${
-                      isSelected
-                        ? 'bg-blue-600/20 border-blue-500 shadow-[0_0_15px_rgba(37,99,235,0.2)] scale-[1.01]'
-                        : 'bg-slate-900 border-slate-700 hover:border-slate-500 hover:bg-slate-800/60'
-                    } disabled:cursor-wait`}
-                  >
-                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
-                      isSelected ? 'border-blue-500' : 'border-slate-500'
-                    }`}>
-                      {isSelected && <div className="w-2.5 h-2.5 bg-blue-400 rounded-full" />}
-                    </div>
-                    <span className="text-slate-200">{opt}</span>
-                  </button>
-                );
-              })
-            )}
-          </div>
+          ) : (
+            getOptions(currentQ).map((opt, i) => {
+              const isSelected = selectedOption === opt;
+              return (
+                <button
+                  key={i}
+                  onClick={() => handleOptionClick(opt)}
+                  disabled={advancing}
+                  style={{
+                    width: '100%',
+                    textAlign: 'left',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 12,
+                    padding: 16,
+                    background: isSelected ? 'rgba(37,99,235,0.06)' : 'var(--elevated)',
+                    border: `1px solid ${isSelected ? 'var(--blue)' : 'var(--border)'}`,
+                    borderRadius: 8,
+                    cursor: advancing ? 'wait' : 'pointer',
+                    transition: 'all 0.2s',
+                    position: 'relative'
+                  }}
+                  className="card-hover"
+                >
+                  <div style={{
+                    width: 18,
+                    height: 18,
+                    borderRadius: '50%',
+                    border: `2px solid ${isSelected ? 'var(--blue)' : 'var(--text-muted)'}`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                    transition: 'all 0.2s'
+                  }}>
+                    {isSelected && <div style={{ width: 8, height: 8, background: 'var(--blue)', borderRadius: '50%' }} />}
+                  </div>
+                  <span style={{ fontSize: 14, color: isSelected ? 'var(--text-primary)' : 'var(--text-secondary)', fontWeight: isSelected ? 600 : 400 }}>{opt}</span>
+                </button>
+              );
+            })
+          )}
         </div>
       </div>
 
       {/* Bottom action bar */}
-      <div className="fixed bottom-0 left-0 right-0 bg-slate-950/80 backdrop-blur-xl border-t border-slate-800 p-4 pb-safe z-[60]">
-        <div className="max-w-3xl mx-auto flex justify-between items-center px-4 gap-3">
-
-          {/* Back button */}
+      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: 'var(--surface)', borderTop: '1px solid var(--border)', padding: '16px 20px', zIndex: 60 }}>
+        <div style={{ maxWidth: 800, margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16 }}>
           <button
             onClick={handleBack}
             disabled={currentIndex === 0}
-            className="flex items-center gap-1.5 px-4 py-2.5 font-bold rounded-lg transition-all text-sm bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 disabled:opacity-30 disabled:cursor-not-allowed"
+            className="btn-ghost"
+            style={{ minWidth: 100, padding: '8px 16px' }}
           >
-            <ChevronLeft className="w-4 h-4" /> Back
+            <ChevronLeft size={16} /> Back
           </button>
 
-          {/* Centre: answered count */}
-          <div className="text-slate-400 font-medium text-sm text-center">
-            Answered: <span className="text-white font-bold">{answeredCount}</span> / {total}
+          <div style={{ textAlign: 'center', display: 'none' }} id="quiz-mobile-hide">
+            <style>{`@media (min-width: 640px) { #quiz-mobile-hide { display: block; } }`}</style>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>{answeredCount} of {total} answered</p>
           </div>
 
-          {/* Next / Review */}
           <button
             onClick={handleNext}
             disabled={!selectedOption && !answers[currentQ?.id]}
-            className={`flex items-center gap-2 px-6 py-2.5 font-black rounded-lg transition-all uppercase tracking-widest text-sm disabled:opacity-40 disabled:cursor-not-allowed ${
-              isLast
-                ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-[0_0_12px_rgba(16,185,129,0.35)]'
-                : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
-            }`}
+            className={isLast ? 'btn-primary' : 'btn-ghost'}
+            style={{ minWidth: 140, padding: '8px 20px', ...(isLast ? { background: 'var(--green)', color: '#000', borderColor: 'transparent' } : {}) }}
           >
-            {isLast ? 'Review & Submit' : 'Next'}
-            <ChevronRight className="w-4 h-4" />
+            {isLast ? 'Review & Submit' : 'Next Question'} <ChevronRight size={16} />
           </button>
         </div>
       </div>

@@ -7,6 +7,7 @@ import { Clock, AlertOctagon, ShieldAlert, Wifi, WifiOff } from 'lucide-react';
 import { NormalQuizMode } from '../../components/live/NormalQuizMode';
 import { RapidFireMode } from '../../components/live/RapidFireMode';
 import { TreasureHuntMode } from '../../components/live/TreasureHuntMode';
+import { SimulationMode } from '../../components/live/SimulationMode';
 import { LiveLeaderboard } from '../../components/live/LiveLeaderboard';
 import React from 'react';
 
@@ -24,15 +25,16 @@ class LocalErrorBoundary extends React.Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen bg-slate-950 text-white p-10 font-mono">
-          <h1 className="text-red-500 text-2xl font-bold mb-4 uppercase">Frontend Crash Captured</h1>
-          <div className="bg-slate-900 p-6 rounded-xl border border-red-500/30 overflow-auto">
-            <p className="text-lg mb-4">{this.state.error?.message}</p>
-            <pre className="text-xs text-slate-500">{this.state.error?.stack}</pre>
+        <div style={{ minHeight: '100dvh', background: 'var(--bg)', color: 'var(--text-primary)', padding: 40, fontFamily: 'ui-monospace, monospace' }}>
+          <h1 style={{ color: 'var(--red)', fontSize: 24, fontWeight: 700, marginBottom: 16, textTransform: 'uppercase' }}>Frontend Crash Captured</h1>
+          <div style={{ background: 'var(--surface)', padding: 24, borderRadius: 8, border: '1px solid rgba(239,68,68,0.3)', overflow: 'auto' }}>
+            <p style={{ fontSize: 18, marginBottom: 16 }}>{this.state.error?.message}</p>
+            <pre style={{ fontSize: 12, color: 'var(--text-muted)' }}>{this.state.error?.stack}</pre>
           </div>
           <button
             onClick={() => window.location.reload()}
-            className="mt-6 px-6 py-2 bg-blue-600 rounded-lg font-bold"
+            className="btn-primary"
+            style={{ marginTop: 24 }}
           >
             Retry Component
           </button>
@@ -63,6 +65,8 @@ export function LiveEvent() {
   const [error, setError] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [timeLeftStr, setTimeLeftStr] = useState('');
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const [simDone, setSimDone] = useState(false);
 
   // ── H: Realtime connection status for network-aware UI ────────
   const [realtimeStatus, setRealtimeStatus] = useState('connected');
@@ -122,6 +126,10 @@ export function LiveEvent() {
         const { data: eData, error: eErr } = await supabase.from('events').select('*').eq('id', id).single();
         if (eErr || !eData) throw new Error(eErr?.message || 'Event not found');
         if (eData.status === 'ended') return navigate(`/results/${id}`);
+        // Block exam entry if results have already been announced
+        if (eData.results_announced === true) return navigate(`/results/${id}`);
+        // Redirect coding events to their dedicated coding arena
+        if (eData.type === 'coding_challenge') return navigate(`/live-coding/${id}`);
         if (isMountedRef.current) setEventData(eData);
 
         // ── A: Populate single source of truth in global store ──
@@ -383,6 +391,12 @@ export function LiveEvent() {
       }, (payload) => {
         if (payload.new.status === 'ended') {
           forceCheatSubmission();
+          return;
+        }
+        // If admin announces results while the event is still live — navigate cleanly without force-submitting
+        if (payload.new.results_announced === true) {
+          if (isMountedRef.current) navigate(`/results/${id}`);
+          return;
         }
       })
       .subscribe((status) => {
@@ -449,7 +463,10 @@ export function LiveEvent() {
   // Feature 1: stable callback for NormalQuizMode to report current question index
   // MUST be declared here (top-level hook, before all conditional returns)
   const handleQuestionChange = useCallback(
-    (idx) => patchLiveEventRuntime({ currentQuestionIndex: idx }),
+    (idx) => {
+      setCurrentQuestionIndex(idx);
+      patchLiveEventRuntime({ currentQuestionIndex: idx });
+    },
     [patchLiveEventRuntime]
   );
 
@@ -464,15 +481,15 @@ export function LiveEvent() {
 
   // G: Error state with retry — Fix #6: retry cooldown prevents spam calls
   if (error) return (
-    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-8 text-center">
-      <div className="glass-card p-10 max-w-lg border-red-500/30">
-        <WifiOff className="w-12 h-12 text-red-500 mx-auto mb-4" />
-        <h2 className="text-2xl font-black text-white mb-3">Failed to Load Event</h2>
-        <p className="text-slate-400 mb-6">{error}</p>
+    <div style={{ minHeight: '100dvh', background: 'var(--bg)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 32, textAlign: 'center' }}>
+      <div style={{ background: 'var(--surface)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 12, padding: '40px 32px', maxWidth: 480, width: '100%' }}>
+        <WifiOff size={48} style={{ color: 'var(--red)', margin: '0 auto 16px' }} />
+        <h2 style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 12 }}>Failed to Load Event</h2>
+        <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 24, lineHeight: 1.6 }}>{error}</p>
         <button
           disabled={retrying}
           onClick={() => {
-            if (retrying) return;           // Fix #6: ref-like guard
+            if (retrying) return;
             setRetrying(true);
             // Re-enable after 5s regardless of outcome
             setTimeout(() => setRetrying(false), 5000);
@@ -489,13 +506,15 @@ export function LiveEvent() {
   // FATAL CHEAT SCREEN
   if (violations >= 3) {
     return (
-      <div className="min-h-screen bg-red-950 flex flex-col items-center justify-center p-6 text-center select-none">
-        <ShieldAlert className="w-24 h-24 text-red-500 mb-6 animate-pulse" />
-        <h1 className="text-4xl font-black text-white mb-4 uppercase tracking-widest">Access Revoked</h1>
-        <p className="text-red-200 text-lg max-w-xl bg-red-900/50 p-6 rounded-xl border border-red-500/50">
-          Your event session was forcibly submitted and terminated due to multiple cheating violations (Switching tabs/windows).
-        </p>
-        <button onClick={() => navigate('/events')} className="mt-8 px-8 py-3 bg-white text-red-950 font-bold rounded-xl shadow-lg">Return Home</button>
+      <div style={{ minHeight: '100dvh', background: 'var(--bg)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, textAlign: 'center' }}>
+        <ShieldAlert size={80} style={{ color: 'var(--red)', marginBottom: 24 }} />
+        <h1 style={{ fontSize: 24, fontWeight: 800, color: 'var(--text-primary)', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Access Revoked</h1>
+        <div style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)', padding: 24, borderRadius: 12, maxWidth: 520, width: '100%' }}>
+          <p style={{ fontSize: 15, color: 'var(--red)', fontWeight: 600, lineHeight: 1.6 }}>
+            Your session was terminated due to multiple cheating violations (switch detected).
+          </p>
+        </div>
+        <button onClick={() => navigate('/events')} className="btn-primary" style={{ marginTop: 32 }}>Return to Events</button>
       </div>
     );
   }
@@ -503,24 +522,24 @@ export function LiveEvent() {
   // Pre-Start Lock Screen
   if (!hasStarted) {
     return (
-      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 text-center select-none">
-        <div className="glass-card p-10 max-w-xl border-emerald-500/30">
-          <h1 className="text-3xl font-black text-white mb-2">{eventData.title}</h1>
-          <p className="text-emerald-400 font-bold uppercase tracking-widest text-sm mb-8">Competition Engine Ready</p>
+      <div style={{ minHeight: '100dvh', background: 'var(--bg)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, textAlign: 'center' }}>
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '40px 32px', maxWidth: 520, width: '100%' }}>
+          <h1 style={{ fontSize: 24, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>{eventData.title}</h1>
+          <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--green)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 32 }}>Competition Engine Ready</p>
 
-          <div className="bg-slate-900 border border-amber-500/30 p-5 rounded-lg text-left mb-8 space-y-3 shadow-inner">
-            <p className="text-sm font-bold text-slate-300 flex items-center gap-2">
-              <AlertOctagon className="w-4 h-4 text-amber-500" /> Anti-Cheat Rules Enforced:
+          <div style={{ background: 'var(--elevated)', border: '1px solid var(--border)', padding: 24, borderRadius: 8, textAlign: 'left', marginBottom: 32 }}>
+            <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+              <AlertOctagon size={16} style={{ color: 'var(--amber)' }} /> Rules & Security
             </p>
-            <ul className="text-sm text-slate-400 pl-6 list-disc space-y-1">
-              <li>Switching tabs or windows will trigger a violation strike.</li>
-              <li>Copy, paste, and right-click have been strictly disabled.</li>
-              <li>Accumulating 3 strikes instantly terminates your session.</li>
+            <ul style={{ fontSize: 13, color: 'var(--text-secondary)', paddingLeft: 20, margin: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <li>Switching tabs/windows will trigger a violation strike.</li>
+              <li>Copy, paste, and right-click are strictly disabled.</li>
+              <li>Accumulating 3 strikes terminates your session instantly.</li>
             </ul>
           </div>
 
-          <button onClick={startChallenge} className="w-full py-4 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-lg uppercase tracking-widest rounded-xl shadow-[0_0_25px_rgba(16,185,129,0.5)] transition-all transform hover:scale-105 active:scale-95">
-            Enter Fullscreen &amp; Begin
+          <button onClick={startChallenge} className="btn-primary" style={{ width: '100%', padding: '14px 24px', fontSize: 16 }}>
+            Enter Fullscreen & Begin
           </button>
         </div>
       </div>
@@ -555,81 +574,102 @@ export function LiveEvent() {
         />
       );
     }
+
+    const currentQ = questions[currentQuestionIndex];
+    const isSimulation = currentQ?.question_bank?.question_type === 'simulation' && !simDone;
+
     return (
-      <NormalQuizMode
-        questions={questions}
-        answers={answers}
-        answerQuestion={answerQuestion}
-        onSubmit={submitEvent}
-        isSubmitting={isSubmitting}
-        onQuestionChange={handleQuestionChange}
-      />
+      <div className="relative">
+        <div style={{ display: isSimulation ? 'none' : 'block' }}>
+          <NormalQuizMode
+            questions={questions}
+            answers={answers}
+            answerQuestion={answerQuestion}
+            onSubmit={submitEvent}
+            isSubmitting={isSubmitting}
+            onQuestionChange={handleQuestionChange}
+          />
+        </div>
+        
+        {isSimulation && (
+          <SimulationMode
+            question={currentQ}
+            user={user}
+            eventId={id}
+            participationId={participationIdRef.current}
+            onSimSubmitted={() => {
+              // Mark as answered so NormalQuizMode shows it as completed
+              answerQuestion(currentQ.id, 'simulation_submitted');
+            }}
+            onNext={() => {
+              setSimDone(true);
+              // Briefly hide then show to trigger NormalQuizMode's internal re-render
+              // but we stay on the same index, student manually clicks Next
+              setTimeout(() => setSimDone(false), 100);
+            }}
+            isSubmitting={isSubmitting}
+          />
+        )}
+      </div>
     );
   };
 
   return (
     <LocalErrorBoundary>
-      <div className="min-h-screen bg-slate-950 select-none overflow-x-hidden">
+      <div style={{ minHeight: '100dvh', background: 'var(--bg)', overflowX: 'hidden', userSelect: 'none' }}>
 
         {/* Violation Warning Banner */}
         {showViolationBanner && (
-          <div className="fixed top-0 left-0 right-0 z-[100] bg-red-600 text-white text-center py-2 px-4 font-bold text-xs sm:text-sm uppercase tracking-widest animate-pulse shadow-2xl">
+          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100, background: 'var(--red)', color: '#fff', textAlign: 'center', padding: '10px 16px', fontWeight: 700, fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.08em', boxShadow: '0 4px 12px rgba(0,0,0,0.3)', animation: 'pulse 2s infinite' }}>
             ⚠ Violation {violations}/3 — Tab switch detected!
           </div>
         )}
 
         {/* H: Realtime Reconnecting Banner */}
         {realtimeStatus === 'reconnecting' && (
-          <div className="fixed top-0 left-0 right-0 z-[99] bg-amber-600/90 text-white text-center py-1.5 px-4 font-bold text-xs uppercase tracking-widest shadow-xl flex items-center justify-center gap-2">
-            <WifiOff className="w-3.5 h-3.5 animate-pulse" />
-            Reconnecting to server — answers are saved locally
+          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 99, background: 'var(--amber)', color: '#000', textAlign: 'center', padding: '8px 16px', fontWeight: 700, fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.06em', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+            <WifiOff size={14} /> Reconnecting to server — answers are saved locally
           </div>
         )}
 
         {/* Top HUD Bar */}
-        <div className="fixed top-0 left-0 right-0 bg-slate-950/90 backdrop-blur-xl border-b border-slate-800 z-50 px-3 sm:px-6 py-2.5 flex justify-between items-center gap-3 flex-wrap">
-          <div className="flex items-center gap-2 min-w-0">
-            <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse shrink-0" />
-            <span className="text-xs sm:text-sm font-bold text-white uppercase tracking-wider truncate max-w-[130px] sm:max-w-[200px] md:max-w-xs">
-              {eventData.title}
-            </span>
-            <span className="hidden sm:inline text-xs px-2 py-0.5 bg-slate-800 rounded-full text-slate-400 border border-slate-700 capitalize shrink-0">
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, background: 'var(--surface)', borderBottom: '1px solid var(--border)', zIndex: 50, padding: '8px 16px', height: 48, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+            <div className="live-dot" />
+            <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{eventData.title}</p>
+            <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', background: 'var(--elevated)', borderRadius: 99, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
               {(type || 'quiz').replace('_', ' ')}
             </span>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             {timeLeftStr && (
-              <div className="flex items-center gap-1.5 bg-slate-900 px-2.5 py-1.5 rounded-lg border border-slate-700">
-                <Clock className="w-3.5 h-3.5 text-amber-400" />
-                <span className="font-mono font-bold text-amber-400 text-xs sm:text-sm">{timeLeftStr}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(245,158,11,0.08)', borderRadius: 6, padding: '4px 10px', border: '1px solid rgba(245,158,11,0.2)' }}>
+                <Clock size={12} style={{ color: 'var(--amber)' }} />
+                <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: 13, fontWeight: 700, color: 'var(--amber)', letterSpacing: '0.04em' }}>{timeLeftStr}</span>
               </div>
             )}
             {violations > 0 && (
-              <div className="flex items-center gap-1 bg-red-900/50 px-2.5 py-1.5 rounded-lg border border-red-500/50">
-                <ShieldAlert className="w-3.5 h-3.5 text-red-400" />
-                <span className="font-bold text-red-400 text-xs sm:text-sm">{violations}/3</span>
-              </div>
-            )}
-            {/* H: Network indicator */}
-            {realtimeStatus === 'reconnecting' && (
-              <div className="flex items-center gap-1 bg-amber-900/40 px-2.5 py-1.5 rounded-lg border border-amber-500/30">
-                <WifiOff className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(239,68,68,0.08)', borderRadius: 6, padding: '4px 10px', border: '1px solid rgba(239,68,68,0.25)' }}>
+                <ShieldAlert size={12} style={{ color: 'var(--red)' }} />
+                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--red)' }}>{violations}/3</span>
               </div>
             )}
           </div>
         </div>
 
         {/* Main Content */}
-        <div className="pt-14 grid grid-cols-1 xl:grid-cols-4 min-h-screen">
+        <div style={{ paddingTop: 48, display: 'grid', gridTemplateColumns: '1fr', minHeight: '100dvh' }} id="live-event-grid">
+          <style>{`@media (min-width: 1280px) { #live-event-grid { grid-template-columns: 1fr 340px; } }`}</style>
 
           {/* Quiz Area */}
-          <div className="col-span-1 xl:col-span-3 overflow-x-hidden">
+          <div style={{ overflowX: 'hidden' }}>
             {renderMode()}
           </div>
 
           {/* Live Leaderboard Sidebar */}
-          <div className="hidden xl:flex flex-col h-screen sticky top-14 border-l border-slate-800 bg-slate-900/50 backdrop-blur-sm overflow-y-auto">
+          <div style={{ borderLeft: '1px solid var(--border)', background: 'var(--surface)', display: 'none' }} id="live-leaderboard-aside">
+            <style>{`@media (min-width: 1280px) { #live-leaderboard-aside { display: flex; flex-direction: column; height: calc(100dvh - 48px); position: sticky; top: 48px; } }`}</style>
             <LiveLeaderboard
               eventId={id}
               currentUserId={user?.id}

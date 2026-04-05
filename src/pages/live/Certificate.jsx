@@ -102,11 +102,11 @@ export function Certificate() {
       doc.setLineWidth(1);
       doc.rect(30, 30, 740, 540);
 
-      // EventX Header
+      // Zentrix Header
       doc.setTextColor(255, 255, 255);
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(24);
-      doc.text("EVENTX PLATFORM", 400, 80, { align: 'center' });
+      doc.text("ZENTRIX PLATFORM", 400, 80, { align: 'center' });
 
       // Title
       doc.setFontSize(48);
@@ -189,93 +189,63 @@ export function Certificate() {
     setGenerating(false);
   };
 
-  if (loading) return <div className="text-center p-20"><div className="w-12 h-12 border-4 border-slate-800 border-t-purple-500 rounded-full animate-spin mx-auto"></div></div>;
-  if (!data) return <div className="text-center text-red-400 p-20 font-bold">You did not legally complete this event.</div>;
+  if (loading) return <div style={{ display: 'flex', justifyContent: 'center', padding: '80px 0' }}><div style={{ width: 40, height: 40, border: '3px solid var(--elevated)', borderTopColor: 'var(--blue)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} /></div>;
+  if (!data) return <div style={{ textAlign: 'center', color: 'var(--red)', padding: '80px 16px', fontWeight: 600 }}>You did not participate in this event.</div>;
 
   return (
-    <div className="max-w-4xl mx-auto py-16 px-4">
-      <div className="text-center mb-12">
-        <h1 className="text-4xl font-black text-white mb-4">Your Accolades</h1>
-        <p className="text-slate-400">Claim your cryptographic proof of participation for your portfolio.</p>
+    <div style={{ maxWidth: 800, margin: '0 auto', padding: '48px 16px' }}>
+      <div style={{ marginBottom: 24 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>Your Certificate</h1>
+        <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>Cryptographic proof of participation for your portfolio.</p>
       </div>
 
-      <div className="glass-card overflow-hidden">
-        <div className={`p-10 border-b border-white/10 ${data.isWinner ? 'bg-gradient-to-r from-yellow-900/30 to-slate-900' : 'bg-slate-900'}`}>
-          <div className="flex flex-col md:flex-row items-center justify-between gap-8 text-center md:text-left">
-            
-            <div className="flex items-center gap-6">
-              <div className={`w-20 h-20 rounded-full flex items-center justify-center shrink-0 border-4 shadow-2xl ${
-                data.isWinner ? 'bg-yellow-500/20 text-yellow-500 border-yellow-500/50' : 'bg-slate-800 text-slate-400 border-slate-700'
-              }`}>
-                <Award className="w-10 h-10" />
-              </div>
-              <div>
-                <h2 className="text-2xl font-black text-white mb-1">{data.isWinner ? 'Certificate of Excellence' : 'Certificate of Participation'}</h2>
-                <div className="flex items-center gap-3 justify-center md:justify-start">
-                  <span className="text-sm font-bold text-slate-400">Rank #{data.rank}</span>
-                  <span className="w-1 h-1 rounded-full bg-slate-600"></span>
-                  <span className="text-sm font-bold text-slate-400">Score {data.score}</span>
-                </div>
+      <div style={data.isWinner
+        ? { background: 'var(--surface)', border: '1px solid rgba(245,158,11,0.35)', borderLeft: '4px solid #f59e0b', borderRadius: 8, overflow: 'hidden' }
+        : { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }
+      }>
+        <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            <div style={{ width: 44, height: 44, borderRadius: '50%', background: data.isWinner ? 'rgba(245,158,11,0.12)' : 'var(--elevated)', border: `1px solid ${data.isWinner ? 'rgba(245,158,11,0.3)' : 'var(--border)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <Award size={20} style={{ color: data.isWinner ? '#f59e0b' : 'var(--text-muted)' }} />
+            </div>
+            <div>
+              <p style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 6 }}>
+                {data.isWinner ? 'Certificate of Excellence' : 'Certificate of Participation'}
+              </p>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <span className="badge" style={{ background: 'var(--elevated)', color: 'var(--text-muted)' }}>Rank #{data.rank}</span>
+                <span className="badge" style={{ background: 'var(--elevated)', color: 'var(--text-muted)' }}>Score {data.score}</span>
               </div>
             </div>
-
-            <button 
-              onClick={generatePDF}
-              disabled={generating}
-              className={`px-8 py-4 rounded-xl font-black uppercase tracking-widest text-sm flex items-center gap-3 transition-all shadow-lg ${
-                generating ? 'bg-slate-800 text-slate-500 cursor-not-allowed' : 
-                data.isWinner ? 'bg-yellow-500 hover:bg-yellow-400 text-yellow-950 shadow-yellow-500/25 block' : 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-500/25'
-              }`}
-            >
-              <DownloadCloud className="w-5 h-5"/> {generating ? 'Minting PDF...' : 'Download Document'}
-            </button>
-
           </div>
+          <button onClick={generatePDF} disabled={generating} className={generating ? 'btn-ghost' : 'btn-primary'} style={{ flexShrink: 0 }}>
+            <DownloadCloud size={15} /> {generating ? 'Generating...' : 'Download Certificate'}
+          </button>
         </div>
-
-        <div className="p-10 bg-slate-950/50 flex flex-col md:flex-row items-start lg:items-center gap-6 justify-between">
-          <div>
-            <h3 className="text-sm font-bold text-white uppercase tracking-widest mb-2 flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4 text-emerald-500"/> Cryptographically Verified
-            </h3>
-            <p className="text-sm text-slate-400 max-w-xl leading-relaxed">
-              When generated, this document receives a unique hash injected into the EventX Postgres registry. Anyone can visit the verification portal and input your ID to mathematically prove its authenticity.
-            </p>
+        <div style={{ padding: '20px 24px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <ShieldCheck size={14} style={{ color: 'var(--green)' }} />
+            <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>Cryptographically Verified</p>
           </div>
-          
+          <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.7, maxWidth: 560, marginBottom: 16 }}>
+            When generated, this document receives a unique hash stored in the Zentrix registry. Anyone can verify its authenticity using the certificate ID.
+          </p>
           {existingCert && (
-            <div className="bg-slate-900 border border-slate-800 p-4 rounded-lg shrink-0 w-full md:w-auto text-center">
-               <p className="text-[10px] uppercase font-black text-slate-500 tracking-[0.2em] mb-1">Your Certificate ID</p>
-               <p className="font-mono text-emerald-400 text-sm tracking-wider">{existingCert.cert_uid.split('-').pop()}</p>
-
-               {/* Feature 7: Copy Link + Share */}
-               <div className="flex gap-2 mt-3 justify-center">
-                 <button
-                   onClick={async () => {
-                     await navigator.clipboard.writeText(
-                       `${window.location.origin}/verify/${existingCert.cert_uid}`
-                     );
-                     setCopied(true);
-                     setTimeout(() => setCopied(false), 2000);
-                   }}
-                   className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-bold transition-colors border border-slate-700"
-                 >
-                   {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Link2 className="w-3.5 h-3.5" />}
-                   {copied ? 'Copied!' : 'Copy Link'}
-                 </button>
-                 {typeof navigator.share === 'function' && (
-                   <button
-                     onClick={() => navigator.share({
-                       title: `My EventX Certificate — ${data?.event?.title}`,
-                       text: `Check out my verified certificate from ${data?.event?.title}!`,
-                       url: `${window.location.origin}/verify/${existingCert.cert_uid}`,
-                     })}
-                     className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold transition-colors"
-                   >
-                     <Share2 className="w-3.5 h-3.5" /> Share
-                   </button>
-                 )}
-               </div>
+            <div style={{ background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: '14px 16px', display: 'inline-flex', flexDirection: 'column', gap: 10 }}>
+              <div>
+                <p style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 4 }}>Certificate ID</p>
+                <p style={{ fontFamily: 'ui-monospace, monospace', fontSize: 13, color: 'var(--green)', letterSpacing: '0.05em' }}>{existingCert.cert_uid.split('-').pop()}</p>
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={async () => { await navigator.clipboard.writeText(`${window.location.origin}/verify/${existingCert.cert_uid}`); setCopied(true); setTimeout(() => setCopied(false), 2000); }} className="btn-ghost" style={{ fontSize: 12, padding: '5px 12px', minHeight: 'unset', ...(copied ? { color: 'var(--green)' } : {}) }}>
+                  {copied ? <Check size={13} /> : <Link2 size={13} />} {copied ? 'Copied!' : 'Copy Link'}
+                </button>
+                {typeof navigator.share === 'function' && (
+                  <button onClick={() => navigator.share({ title: `My Zentrix Certificate`, text: `Certificate from ${data?.event?.title}!`, url: `${window.location.origin}/verify/${existingCert.cert_uid}` })} className="btn-primary" style={{ fontSize: 12, padding: '5px 12px', minHeight: 'unset' }}>
+                    <Share2 size={13} /> Share
+                  </button>
+                )}
+              </div>
             </div>
           )}
         </div>
