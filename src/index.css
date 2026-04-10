@@ -44,12 +44,23 @@ html {
   text-size-adjust: 100%;
 }
 
+html,
+body,
+#root {
+  width: 100%;
+  max-width: 100%;
+}
+
 body {
   background-color: var(--bg);
   color: var(--text-primary);
   font-family: 'Inter', 'Geist', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
-  overflow-x: hidden;
+  overflow-x: auto;
+  min-height: 100dvh;
+}
+
+#root {
   min-height: 100dvh;
 }
 
@@ -63,6 +74,19 @@ img, video, iframe, canvas, svg {
 h1, h2, h3, h4, h5, h6 {
   word-break: break-word;
   overflow-wrap: break-word;
+}
+
+p, li, td, th, span {
+  overflow-wrap: anywhere;
+}
+
+pre, code {
+  max-width: 100%;
+}
+
+pre {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* Scrollable tables */
@@ -425,7 +449,14 @@ input, select, textarea, button {
 @media (max-width: 767px) {
   .main-content-area {
     padding-bottom: calc(56px + env(safe-area-inset-bottom, 0px));
+    min-width: 0;
+    width: 100%;
   }
+
+    .app-main-content {
+      min-width: 0;
+      width: 100%;
+    }
 }
 
 /* ═══════════════════════════════════
@@ -1008,6 +1039,13 @@ input, select, textarea, button {
   border-radius: 8px;
   overflow: hidden;
   background: var(--surface);
+}
+
+@media (max-width: 767px) {
+  .chat-box {
+    height: min(70dvh, 560px);
+    min-height: 300px;
+  }
 }
 
 .chat-messages {

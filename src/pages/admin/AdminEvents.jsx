@@ -36,6 +36,16 @@ const parseStyle = (str) => {
   return obj;
 };
 
+const dayStart = (dateValue) => {
+  if (!dateValue) return '';
+  return new Date(`${dateValue}T00:00:00`).toISOString();
+};
+
+const dayEnd = (dateValue) => {
+  if (!dateValue) return '';
+  return new Date(`${dateValue}T23:59:59.999`).toISOString();
+};
+
 const Label = ({ children }) => (
   <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
     {children}

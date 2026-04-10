@@ -14,11 +14,26 @@ export function Lobby() {
   // Base Data
   const [ticket, setTicket] = useState(null);
   const [eventData, setEventData] = useState(null);
+  const [participants, setParticipants] = useState([]);
+  const [teams, setTeams] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [totalJoined, setTotalJoined] = useState(0);
+  const [liveCount, setLiveCount] = useState(0);
+  const [timeLeft, setTimeLeft] = useState('...');
+  const [notifPermission, setNotifPermission] = useState(
+    typeof Notification !== 'undefined' ? Notification.permission : 'default'
+  );
   const eventTypeRef = useRef(null);
+  const isMountedRef = useRef(true);
+  const notifTimer5Ref = useRef(null);
+  const notifTimerStartRef = useRef(null);
 
   useEffect(() => {
+    isMountedRef.current = true;
+
     async function loadData() {
       if (!user) return;
+      setLoading(true);
       
       // 1. Fetch Ticket Info
       const { data: ticketData, error } = await supabase
@@ -38,7 +53,6 @@ export function Lobby() {
       }
       setTicket(ticketData);
       setEventData(ticketData.events);
-      setEventType(ticketData.events.type);
       eventTypeRef.current = ticketData.events.type;
 
       // If results announced or event ended, redirect to results — not lobby
@@ -90,6 +104,12 @@ export function Lobby() {
       setLoading(false);
     }
     loadData();
+
+    return () => {
+      isMountedRef.current = false;
+      if (notifTimer5Ref.current) clearTimeout(notifTimer5Ref.current);
+      if (notifTimerStartRef.current) clearTimeout(notifTimerStartRef.current);
+    };
   }, [id, user, navigate, setPreloadedQuestions]);
 
   // Feature 11: Schedule browser notifications for event start

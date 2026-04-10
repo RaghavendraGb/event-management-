@@ -48,9 +48,9 @@ export function AppLayout() {
   };
 
   return (
-    <div style={{ display: 'flex', height: '100dvh', background: 'var(--bg)', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', height: '100dvh', background: 'var(--bg)', maxWidth: '100%' }}>
       <Sidebar />
-      <main style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', display: 'flex', flexDirection: 'column', position: 'relative' }}>
+      <main style={{ flex: 1, minWidth: 0, overflowY: 'auto', overflowX: 'auto', display: 'flex', flexDirection: 'column', position: 'relative' }}>
         {/* Global Live Event Banner */}
         <LiveBanner />
 
@@ -58,7 +58,7 @@ export function AppLayout() {
         {getNetworkBanner()}
 
         {/* Page content */}
-        <div className="main-content-area" style={{ flex: 1, padding: '1rem', position: 'relative' }}>
+        <div className="main-content-area" style={{ flex: 1, minWidth: 0, padding: '1rem', position: 'relative' }}>
           {/* Desktop: more padding */}
           <style>{`
             @media (min-width: 768px) {
@@ -68,7 +68,7 @@ export function AppLayout() {
               .app-main-content { padding: 28px 32px; max-width: 1100px; margin: 0 auto; }
             }
           `}</style>
-          <div className="app-main-content" style={{ padding: '16px' }}>
+          <div className="app-main-content" style={{ padding: '16px', minWidth: 0 }}>
             <Outlet />
           </div>
         </div>
