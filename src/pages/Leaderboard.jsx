@@ -12,12 +12,53 @@ function StatusBadge({ status }) {
 export function Leaderboard() {
   const { id } = useParams();
   const [eventData, setEventData] = useState(null);
+  const [loadError, setLoadError] = useState('');
 
   useEffect(() => {
-    supabase.from('events').select('title, type, status, sponsor_logo_url').eq('id', id).single().then(({ data }) => {
+    let active = true;
+
+    async function loadEventMeta() {
+      setLoadError('');
+      const { data, error } = await supabase
+        .from('events')
+        .select('title, type, status, sponsor_logo_url')
+        .eq('id', id)
+        .single();
+
+      if (!active) return;
+      if (error || !data) {
+        setLoadError(error?.message || 'Unable to load leaderboard right now.');
+        return;
+      }
       setEventData(data);
+    }
+
+    loadEventMeta().catch((err) => {
+      if (!active) return;
+      console.error('LEADERBOARD_META_LOAD_ERROR', err);
+      setLoadError('Unable to load leaderboard right now.');
     });
+
+    return () => {
+      active = false;
+    };
   }, [id]);
+
+  if (loadError) {
+    return (
+      <div style={{ maxWidth: 1100, margin: '0 auto' }}>
+        <div style={{
+          background: 'var(--surface)',
+          border: '1px solid rgba(245,158,11,0.28)',
+          borderRadius: 10,
+          padding: 16,
+          color: 'var(--text-secondary)',
+        }}>
+          {loadError}
+        </div>
+      </div>
+    );
+  }
 
   if (!eventData) {
     return (

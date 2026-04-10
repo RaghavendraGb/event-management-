@@ -1,11 +1,13 @@
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { LiveBanner } from './LiveBanner';
 import { useStore } from '../../store';
 import { WifiOff, Wifi, Signal } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { RouteErrorBoundary } from './RouteErrorBoundary';
 
 export function AppLayout() {
+  const location = useLocation();
   const networkStatus = useStore((state) => state.networkStatus);
   const [showRecovery, setShowRecovery] = useState(false);
 
@@ -69,7 +71,9 @@ export function AppLayout() {
             }
           `}</style>
           <div className="app-main-content" style={{ padding: '16px', minWidth: 0 }}>
-            <Outlet />
+            <RouteErrorBoundary resetKey={location.pathname}>
+              <Outlet />
+            </RouteErrorBoundary>
           </div>
         </div>
       </main>

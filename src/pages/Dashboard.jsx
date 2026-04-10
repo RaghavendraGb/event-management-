@@ -42,7 +42,9 @@ export function Dashboard() {
         const maxScore = data.reduce((max, p) => p.score > max ? p.score : max, 0);
 
         let bestRank = null;
-        const submittedParticipations = data.filter(p => p.status === 'submitted' && p.events?.id);
+        const submittedParticipations = data
+          .filter(p => p.status === 'submitted' && p.events?.id)
+          .slice(0, 30);
 
         if (submittedParticipations.length > 0) {
           const rankPromises = submittedParticipations.map(async (p) => {
@@ -53,7 +55,10 @@ export function Dashboard() {
               .gt('score', p.score || 0);
             return (count || 0) + 1;
           });
-          const ranks = await Promise.all(rankPromises);
+          const rankResults = await Promise.allSettled(rankPromises);
+          const ranks = rankResults
+            .filter(r => r.status === 'fulfilled')
+            .map(r => r.value);
           bestRank = ranks.reduce((best, r) => (r < best ? r : best), Infinity);
           if (bestRank === Infinity) bestRank = null;
         }

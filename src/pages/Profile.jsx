@@ -13,6 +13,7 @@ export function Profile() {
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
+  const [loadError, setLoadError] = useState(null);
 
   useEffect(() => {
     async function loadProfile() {
@@ -22,6 +23,7 @@ export function Profile() {
       }
 
       setLoading(true);
+      setLoadError(null);
 
       const { data: userData } = await supabase
         .from('users')
@@ -37,9 +39,10 @@ export function Profile() {
 
       const safeRows = rows || [];
       const submitted = safeRows.filter((r) => r.status === 'submitted' && r.events?.id);
+      const rankTargetRows = submitted.slice(0, 30);
 
-      const ranks = await Promise.all(
-        submitted.map(async (r) => {
+      const rankResults = await Promise.allSettled(
+        rankTargetRows.map(async (r) => {
           const { count } = await supabase
             .from('participation')
             .select('id', { count: 'exact', head: true })
@@ -52,12 +55,23 @@ export function Profile() {
         })
       );
 
+      const ranks = rankResults
+        .filter((r) => r.status === 'fulfilled')
+        .map((r) => r.value);
+
       setProfile(userData || null);
       setEntries(ranks);
       setLoading(false);
+      if (rankResults.some((r) => r.status === 'rejected')) {
+        setLoadError('Some historical ranks could not be loaded.');
+      }
     }
 
-    loadProfile();
+    loadProfile().catch((err) => {
+      console.error('PROFILE_LOAD_ERROR', err);
+      setLoadError('Failed to load full profile data.');
+      setLoading(false);
+    });
   }, [targetUserId]);
 
   const stats = useMemo(() => {
@@ -189,6 +203,9 @@ export function Profile() {
         padding: 16,
       }}>
         <p className="t-section-label" style={{ marginBottom: 12 }}>Recent Achievements</p>
+        {loadError && (
+          <p style={{ fontSize: 12, color: 'var(--amber)', marginBottom: 10 }}>{loadError}</p>
+        )}
         {entries.length === 0 ? (
           <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>No completed events to show yet.</p>
         ) : (

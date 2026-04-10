@@ -14,3 +14,12 @@ The React Compiler is not enabled on this template because of its impact on dev 
 ## Expanding the ESLint configuration
 
 If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+
+## Production Performance Patch
+
+For better performance with many concurrent users, run the SQL patch:
+
+1. Open Supabase SQL Editor.
+2. Run `database/performance_indexes.sql`.
+
+This adds read indexes used by live leaderboard, participation queries, admin screens, and chat timeline fetches.
