@@ -61,15 +61,3 @@ export function YouTubePlayer({ youtubeId, title = 'Video' }) {
  * Extract YouTube video ID from various URL formats.
  * e.g. https://www.youtube.com/watch?v=dQw4w9WgXcQ → dQw4w9WgXcQ
  */
-export function extractYouTubeId(url) {
-  if (!url) return null;
-  const patterns = [
-    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&?\s]+)/,
-    /^([a-zA-Z0-9_-]{11})$/, // raw ID
-  ];
-  for (const pattern of patterns) {
-    const match = url.match(pattern);
-    if (match) return match[1];
-  }
-  return null;
-}

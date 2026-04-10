@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AppLayout } from './components/layout/AppLayout';
 import { ProtectedRoute } from './components/layout/ProtectedRoute';
@@ -6,54 +6,55 @@ import { supabase, initClockOffset } from './lib/supabase';
 import { useStore } from './store';
 import { useNetworkStatus } from './lib/useNetworkStatus';
 import { WifiOff } from 'lucide-react';
-// Pages
-import { Home } from './pages/Home';
-import { Login } from './pages/Login';
-import { Signup } from './pages/Signup';
-import { Dashboard } from './pages/Dashboard';
-import { Leaderboard } from './pages/Leaderboard';
-import { Profile } from './pages/Profile';
 
-// Event Pages
-import { EventList } from './pages/events/EventList';
-import { EventDetail } from './pages/events/EventDetail';
+const lazyNamed = (loader, exportName) =>
+  lazy(() => loader().then((mod) => ({ default: mod[exportName] })));
 
-// Live Pages
-import { Lobby } from './pages/live/Lobby';
-import { LiveEvent } from './pages/live/LiveEvent';
-import { Results } from './pages/live/Results';
-import { Certificate } from './pages/live/Certificate';
-import { Verify } from './pages/live/Verify';
-import { LiveCoding } from './pages/live/LiveCoding';
-import { AdminCodingProblems } from './pages/admin/AdminCodingProblems';
+const Home = lazyNamed(() => import('./pages/Home'), 'Home');
+const Login = lazyNamed(() => import('./pages/Login'), 'Login');
+const Signup = lazyNamed(() => import('./pages/Signup'), 'Signup');
+const Dashboard = lazyNamed(() => import('./pages/Dashboard'), 'Dashboard');
+const Leaderboard = lazyNamed(() => import('./pages/Leaderboard'), 'Leaderboard');
+const Profile = lazyNamed(() => import('./pages/Profile'), 'Profile');
+const EventList = lazyNamed(() => import('./pages/events/EventList'), 'EventList');
+const EventDetail = lazyNamed(() => import('./pages/events/EventDetail'), 'EventDetail');
+const Lobby = lazyNamed(() => import('./pages/live/Lobby'), 'Lobby');
+const LiveEvent = lazyNamed(() => import('./pages/live/LiveEvent'), 'LiveEvent');
+const Results = lazyNamed(() => import('./pages/live/Results'), 'Results');
+const Certificate = lazyNamed(() => import('./pages/live/Certificate'), 'Certificate');
+const Verify = lazyNamed(() => import('./pages/live/Verify'), 'Verify');
+const LiveCoding = lazyNamed(() => import('./pages/live/LiveCoding'), 'LiveCoding');
+const AdminCodingProblems = lazyNamed(() => import('./pages/admin/AdminCodingProblems'), 'AdminCodingProblems');
+const AdminDashboard = lazyNamed(() => import('./pages/admin/AdminDashboard'), 'AdminDashboard');
+const AdminEvents = lazyNamed(() => import('./pages/admin/AdminEvents'), 'AdminEvents');
+const AdminQuestions = lazyNamed(() => import('./pages/admin/AdminQuestions'), 'AdminQuestions');
+const AdminParticipants = lazyNamed(() => import('./pages/admin/AdminParticipants'), 'AdminParticipants');
+const AdminUsers = lazyNamed(() => import('./pages/admin/AdminUsers'), 'AdminUsers');
+const AdminSimulations = lazyNamed(() => import('./pages/admin/AdminSimulations'), 'AdminSimulations');
+const EceHub = lazyNamed(() => import('./pages/ece/EceHub'), 'EceHub');
+const EceTopic = lazyNamed(() => import('./pages/ece/EceTopic'), 'EceTopic');
+const EceGallery = lazyNamed(() => import('./pages/ece/EceGallery'), 'EceGallery');
+const EceNotices = lazyNamed(() => import('./pages/ece/EceNotices'), 'EceNotices');
+const EceChat = lazyNamed(() => import('./pages/ece/EceChat'), 'EceChat');
+const EceDoubts = lazyNamed(() => import('./pages/ece/EceDoubts'), 'EceDoubts');
+const EceOrganisation = lazyNamed(() => import('./pages/ece/EceOrganisation'), 'EceOrganisation');
+const AdminEceDashboard = lazyNamed(() => import('./pages/admin/ece/AdminEceDashboard'), 'AdminEceDashboard');
+const AdminEceTopics = lazyNamed(() => import('./pages/admin/ece/AdminEceTopics'), 'AdminEceTopics');
+const AdminEceResources = lazyNamed(() => import('./pages/admin/ece/AdminEceResources'), 'AdminEceResources');
+const AdminEceGallery = lazyNamed(() => import('./pages/admin/ece/AdminEceGallery'), 'AdminEceGallery');
+const AdminEceNotices = lazyNamed(() => import('./pages/admin/ece/AdminEceNotices'), 'AdminEceNotices');
+const AdminEceDoubts = lazyNamed(() => import('./pages/admin/ece/AdminEceDoubts'), 'AdminEceDoubts');
+const AdminEceChat = lazyNamed(() => import('./pages/admin/ece/AdminEceChat'), 'AdminEceChat');
+const AdminEceQuotes = lazyNamed(() => import('./pages/admin/ece/AdminEceQuotes'), 'AdminEceQuotes');
+const AdminEceOrganisation = lazyNamed(() => import('./pages/admin/ece/AdminEceOrganisation'), 'AdminEceOrganisation');
 
-// Admin Pages
-import { AdminDashboard } from './pages/admin/AdminDashboard';
-import { AdminEvents } from './pages/admin/AdminEvents';
-import { AdminQuestions } from './pages/admin/AdminQuestions';
-import { AdminParticipants } from './pages/admin/AdminParticipants';
-import { AdminUsers } from './pages/admin/AdminUsers';
-import { AdminSimulations } from './pages/admin/AdminSimulations';
-
-// ECE Hub Pages — Student
-import { EceHub } from './pages/ece/EceHub';
-import { EceTopic } from './pages/ece/EceTopic';
-import { EceGallery } from './pages/ece/EceGallery';
-import { EceNotices } from './pages/ece/EceNotices';
-import { EceChat } from './pages/ece/EceChat';
-import { EceDoubts } from './pages/ece/EceDoubts';
-import { EceOrganisation } from './pages/ece/EceOrganisation';
-
-// ECE Hub Pages — Admin
-import { AdminEceDashboard } from './pages/admin/ece/AdminEceDashboard';
-import { AdminEceTopics } from './pages/admin/ece/AdminEceTopics';
-import { AdminEceResources } from './pages/admin/ece/AdminEceResources';
-import { AdminEceGallery } from './pages/admin/ece/AdminEceGallery';
-import { AdminEceNotices } from './pages/admin/ece/AdminEceNotices';
-import { AdminEceDoubts } from './pages/admin/ece/AdminEceDoubts';
-import { AdminEceChat } from './pages/admin/ece/AdminEceChat';
-import { AdminEceQuotes } from './pages/admin/ece/AdminEceQuotes';
-import { AdminEceOrganisation } from './pages/admin/ece/AdminEceOrganisation';
+function RouteLoader() {
+  return (
+    <div className="h-screen bg-slate-950 flex items-center justify-center">
+      <div className="w-10 h-10 border-4 border-slate-800 border-t-blue-500 rounded-full animate-spin" />
+    </div>
+  );
+}
 
 function App() {
   const { setUser, setAuthLoading } = useStore();
@@ -67,7 +68,7 @@ function App() {
   // preventing a stale SIGNED_OUT from overwriting a fresh SIGNED_IN.
   const fetchGenRef = useRef(0);
 
-  const fetchProfile = async (sessionUser) => {
+  const fetchProfile = useCallback(async (sessionUser) => {
     const myGen = ++fetchGenRef.current;
 
     if (!sessionUser) {
@@ -96,7 +97,7 @@ function App() {
 
     setUser(profile || { id: sessionUser.id, role: 'user', email: sessionUser.email });
     setAuthLoading(false);
-  };
+  }, [setAuthLoading, setUser]);
 
   useEffect(() => {
     // Fix #1: Sync clock offset once so all timers compensate for client drift
@@ -121,12 +122,13 @@ function App() {
     return () => {
       subscription.unsubscribe();
     };
-  }, [setUser, setAuthLoading]);
+  }, [setUser, setAuthLoading, fetchProfile]);
 
   return (
     <Router>
-      <Routes>
-        <Route element={<AppLayout />}>
+      <Suspense fallback={<RouteLoader />}>
+        <Routes>
+          <Route element={<AppLayout />}>
           {/* Public / Generic Routes */}
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<Login />} />
@@ -186,9 +188,10 @@ function App() {
           </Route>
           
           {/* Fallback */}
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Route>
-      </Routes>
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Route>
+        </Routes>
+      </Suspense>
 
       {/* Global Offline PWA Modal — only for fully offline state */}
       {networkStatus === 'offline' && (

@@ -10,10 +10,7 @@ import { AlertTriangle, ChevronRight, ChevronLeft, RotateCcw, CheckCircle2 } fro
  */
 export function NormalQuizMode({ questions, answers, answerQuestion, onSubmit, isSubmitting, onQuestionChange }) {
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [selectedOption, setSelectedOption] = useState(null);
-  const [advancing, setAdvancing] = useState(false);  // brief lock after selection
   const [reviewMode, setReviewMode] = useState(false);
-  const [reviewJumpTo, setReviewJumpTo] = useState(null); // null = no jump
 
   // F: Internal submit lock — prevents double-click between state re-renders
   const submitLockedRef = useRef(false);
@@ -22,12 +19,6 @@ export function NormalQuizMode({ questions, answers, answerQuestion, onSubmit, i
   useEffect(() => {
     if (!isSubmitting) submitLockedRef.current = false;
   }, [isSubmitting]);
-
-  // Sync displayed selection from answers when index changes
-  useEffect(() => {
-    const q = questions[currentIndex];
-    setSelectedOption(q ? (answers[q.id] || null) : null);
-  }, [currentIndex, questions, answers]);
 
   // Stable ref for onQuestionChange — avoids adding it to useEffect deps
   // (inline arrow props recreate on every parent render, causing infinite loops)
@@ -38,15 +29,6 @@ export function NormalQuizMode({ questions, answers, answerQuestion, onSubmit, i
   useEffect(() => {
     onQuestionChangeRef.current?.(currentIndex);
   }, [currentIndex]); // intentionally ONLY depends on currentIndex
-
-  // After jumping from review screen
-  useEffect(() => {
-    if (reviewJumpTo !== null) {
-      setCurrentIndex(reviewJumpTo);
-      setReviewMode(false);
-      setReviewJumpTo(null);
-    }
-  }, [reviewJumpTo]);
 
   // Guard: no questions assigned
   if (!questions || questions.length === 0) {
@@ -63,6 +45,7 @@ export function NormalQuizMode({ questions, answers, answerQuestion, onSubmit, i
   const answeredCount = Object.keys(answers).length;
   const isLast = currentIndex === total - 1;
   const currentQ = questions[currentIndex];
+  const selectedOption = currentQ ? (answers[currentQ.id] || null) : null;
 
   // Defensive data accessors — handle both data shapes:
   // Shape A (from event_questions join): { id, question_bank: { question, options, ... } }
@@ -79,8 +62,6 @@ export function NormalQuizMode({ questions, answers, answerQuestion, onSubmit, i
   };
 
   const handleOptionClick = (opt) => {
-    if (advancing) return;
-    setSelectedOption(opt);
     answerQuestion(currentQ.id, opt);
     // No auto-advance: user sees their selection and clicks Next themselves
   };
@@ -120,7 +101,10 @@ export function NormalQuizMode({ questions, answers, answerQuestion, onSubmit, i
               return (
                 <button
                   key={q.id}
-                  onClick={() => setReviewJumpTo(i)}
+                  onClick={() => {
+                    setCurrentIndex(i);
+                    setReviewMode(false);
+                  }}
                   className="card-hover"
                   style={{
                     width: '100%',
@@ -174,7 +158,7 @@ export function NormalQuizMode({ questions, answers, answerQuestion, onSubmit, i
             </p>
             <button
               onClick={handleSubmit}
-              disabled={isSubmitting || submitLockedRef.current}
+              disabled={isSubmitting}
               className="btn-primary"
               style={{ minWidth: 160, padding: '10px 24px' }}
             >
@@ -240,7 +224,7 @@ export function NormalQuizMode({ questions, answers, answerQuestion, onSubmit, i
                 <button
                   key={i}
                   onClick={() => handleOptionClick(opt)}
-                  disabled={advancing}
+                  disabled={isSubmitting}
                   style={{
                     width: '100%',
                     textAlign: 'left',
@@ -251,7 +235,7 @@ export function NormalQuizMode({ questions, answers, answerQuestion, onSubmit, i
                     background: isSelected ? 'rgba(37,99,235,0.06)' : 'var(--elevated)',
                     border: `1px solid ${isSelected ? 'var(--blue)' : 'var(--border)'}`,
                     borderRadius: 8,
-                    cursor: advancing ? 'wait' : 'pointer',
+                    cursor: isSubmitting ? 'wait' : 'pointer',
                     transition: 'all 0.2s',
                     position: 'relative'
                   }}

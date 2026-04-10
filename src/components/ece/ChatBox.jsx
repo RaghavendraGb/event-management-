@@ -110,7 +110,10 @@ export function ChatBox() {
 
   // Load initial messages
   useEffect(() => {
-    loadLatestMessages();
+    const timer = setTimeout(() => {
+      loadLatestMessages();
+    }, 0);
+    return () => clearTimeout(timer);
   }, [loadLatestMessages]);
 
   // Subscribe to real-time inserts

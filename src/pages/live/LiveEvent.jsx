@@ -221,7 +221,7 @@ export function LiveEvent() {
       }
     }
     bootEngine();
-  }, [id, user, navigate, setLiveEventRuntime]);
+  }, [id, user, navigate, setLiveEventRuntime, patchLiveEventRuntime, preloadedQuestions, clearPreloadedQuestions]);
 
   // ── 2. Anti-Cheat & Fullscreen Bootstrap ────────────────────
   const startChallenge = async () => {
@@ -229,7 +229,7 @@ export function LiveEvent() {
       if (document.documentElement.requestFullscreen) {
         await document.documentElement.requestFullscreen();
       }
-    } catch (e) {
+    } catch {
       console.log('Fullscreen request declined or unsupported.');
     }
     setHasStarted(true);
@@ -297,7 +297,7 @@ export function LiveEvent() {
     cleanupEventKeys();
     if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
     navigate(`/results/${id}`);
-  }, [ANSWERS_KEY, PENDING_SUBMIT_KEY, calculateScore, navigate, cleanupEventKeys, persistPendingSync]);
+  }, [ANSWERS_KEY, PENDING_SUBMIT_KEY, calculateScore, id, navigate, cleanupEventKeys, persistPendingSync]);
 
   // ── FIX #3: forceCheatSubmission reads from ref ──────────────
   const forceCheatSubmission = useCallback(async () => {
@@ -511,7 +511,7 @@ export function LiveEvent() {
       });
 
     return () => supabase.removeChannel(endChannel);
-  }, [eventData, hasStarted, id, forceCheatSubmission]);
+  }, [eventData, hasStarted, id, forceCheatSubmission, navigate]);
 
   // ── 4. Server-Side Global Timer ─────────────────────────────
   useEffect(() => {

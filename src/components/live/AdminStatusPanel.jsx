@@ -41,7 +41,9 @@ export function AdminStatusPanel({ eventId, totalQuestions }) {
   }, [eventId]);
 
   useEffect(() => {
-    fetchParticipants();
+    const timer = setTimeout(() => {
+      fetchParticipants();
+    }, 0);
 
     const channel = supabase
       .channel(`admin-status-${eventId}`)
@@ -57,7 +59,10 @@ export function AdminStatusPanel({ eventId, totalQuestions }) {
       )
       .subscribe();
 
-    return () => supabase.removeChannel(channel);
+    return () => {
+      clearTimeout(timer);
+      supabase.removeChannel(channel);
+    };
   }, [eventId, fetchParticipants]);
 
   const total = participants.length;

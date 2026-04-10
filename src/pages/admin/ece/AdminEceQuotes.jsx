@@ -6,6 +6,12 @@ import { Quote, Plus, Trash2, Loader2, Eye, EyeOff, Check, X, Pencil, Save, Refr
 const CATEGORIES = ['motivation', 'exam', 'cheat', 'failure', 'inspiration'];
 const EMPTY_FORM = { text: '', author: 'Anonymous', category: 'motivation', is_active: true };
 
+const Label = ({ children }) => (
+  <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
+    {children}
+  </label>
+);
+
 export function AdminEceQuotes() {
   const [quotes, setQuotes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -15,12 +21,6 @@ export function AdminEceQuotes() {
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
 
-  const Label = ({ children }) => (
-    <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
-      {children}
-    </label>
-  );
-
   const loadQuotes = useCallback(async () => {
     setLoading(true);
     const { data } = await supabase.from('ece_quotes').select('*').order('created_at', { ascending: false });
@@ -28,7 +28,12 @@ export function AdminEceQuotes() {
     setLoading(false);
   }, []);
 
-  useEffect(() => { loadQuotes(); }, [loadQuotes]);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      loadQuotes();
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [loadQuotes]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();

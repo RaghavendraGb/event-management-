@@ -16,7 +16,6 @@ export function SimulationMode({
   const [previewUrl, setPreviewUrl] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
-  const [uploadError, setUploadError] = useState(null);
 
   const [watermarkCode] = useState(() => {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -58,7 +57,6 @@ export function SimulationMode({
     if (!screenshotFile || isUploading || submitted) return;
     
     setIsUploading(true);
-    setUploadError(null);
     
     try {
       const { url: screenshotUrl, public_id: screenshotPublicId } = await uploadToCloudinary(
@@ -97,7 +95,6 @@ export function SimulationMode({
       
     } catch (err) {
       setIsUploading(false);
-      setUploadError(err.message || 'Upload failed. Please try again.');
       alert(err.message || 'Upload failed. Please try again.');
     }
   };

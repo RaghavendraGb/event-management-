@@ -1,13 +1,6 @@
 import pg from 'pg';
 const { Client } = pg;
 
-const password = encodeURIComponent('uydnsu42h#5');
-const hosts = [
-  'aws-0-ap-south-1.pooler.supabase.com',
-  'db.jfqynyxhzusyiwavuijg.supabase.co'
-];
-const ports = [5432, 6543];
-
 async function testConnections() {
   const configs = [
     { host: 'db.jfqynyxhzusyiwavuijg.supabase.co', port: 5432, user: 'postgres' },

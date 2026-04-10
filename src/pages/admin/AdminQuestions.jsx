@@ -23,6 +23,138 @@ const EMPTY_FORM = {
   sim_marks: 10,
 };
 
+function Label({ children }) {
+  return (
+    <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
+      {children}
+    </label>
+  );
+}
+
+function QuestionFields({ fd, setFd, submitLabel, onSubmit }) {
+  return (
+    <form onSubmit={onSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button type="button"
+          onClick={() => setFd({ ...fd, question_type: 'mcq' })}
+          className="btn-ghost"
+          style={{
+            flex: 1,
+            fontSize: 11,
+            background: fd.question_type !== 'simulation' ? 'var(--blue)' : 'var(--elevated)',
+            color: fd.question_type !== 'simulation' ? '#fff' : 'var(--text-muted)'
+          }}>
+          MCQ Question
+        </button>
+        <button type="button"
+          onClick={() => setFd({ ...fd, question_type: 'simulation' })}
+          className="btn-ghost"
+          style={{
+            flex: 1,
+            fontSize: 11,
+            background: fd.question_type === 'simulation' ? 'var(--blue)' : 'var(--elevated)',
+            color: fd.question_type === 'simulation' ? '#fff' : 'var(--text-muted)'
+          }}>
+          Simulation (Wokwi)
+        </button>
+      </div>
+
+      <div>
+        <Label>{fd.question_type === 'simulation' ? "Simulation Title" : "Question Text"}</Label>
+        <textarea required rows={3}
+          style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: 12, color: 'var(--text-primary)', fontSize: 14, resize: 'none' }}
+          value={fd.question} onChange={e => setFd({...fd, question: e.target.value})} />
+      </div>
+
+      {fd.question_type !== 'simulation' && (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            {['A','B','C','D'].map(letter => (
+              <div key={letter}>
+                <Label>Option {letter}</Label>
+                <div style={{ position: 'relative' }}>
+                  <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 10, fontWeight: 900, color: fd.correct === letter ? 'var(--blue)' : 'var(--text-muted)' }}>{letter}</span>
+                  <input required placeholder={`Option ${letter}`}
+                    style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px 10px 32px', color: 'var(--text-primary)', fontSize: 13 }}
+                    value={fd[`opt${letter}`]}
+                    onChange={e => setFd({...fd, [`opt${letter}`]: e.target.value})}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            <div>
+              <Label>Correct Answer</Label>
+              <select style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: 10, color: 'var(--text-primary)', fontSize: 13 }}
+                value={fd.correct} onChange={e => setFd({...fd, correct: e.target.value})}>
+                <option value="A">A</option><option value="B">B</option>
+                <option value="C">C</option><option value="D">D</option>
+              </select>
+            </div>
+            <div>
+              <Label>Difficulty</Label>
+              <select style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: 10, color: 'var(--text-primary)', fontSize: 13 }}
+                value={fd.difficulty} onChange={e => setFd({...fd, difficulty: e.target.value})}>
+                <option value="easy">Easy</option>
+                <option value="medium">Medium</option>
+                <option value="hard">Hard</option>
+              </select>
+            </div>
+          </div>
+        </>
+      )}
+
+      {fd.question_type === 'simulation' && (
+        <div style={{ padding: 16, background: 'rgba(59,130,246,0.03)', border: '1px solid var(--border)', borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div>
+            <Label>Wokwi Embed URL</Label>
+            <input required placeholder="https://wokwi.com/projects/..."
+              style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: 10, color: 'var(--text-primary)', fontSize: 13 }}
+              value={fd.wokwi_url}
+              onChange={e => setFd({ ...fd, wokwi_url: e.target.value })} />
+          </div>
+
+          <div>
+            <Label>Instructions</Label>
+            <textarea rows={4} required
+              style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: 10, color: 'var(--text-primary)', fontSize: 13, resize: 'none' }}
+              value={fd.sim_instructions}
+              onChange={e => setFd({ ...fd, sim_instructions: e.target.value })} />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div>
+              <Label>Expected Output</Label>
+              <input style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: 10, color: 'var(--text-primary)', fontSize: 13 }}
+                value={fd.sim_expected_output}
+                onChange={e => setFd({ ...fd, sim_expected_output: e.target.value })} />
+            </div>
+            <div>
+              <Label>Marks</Label>
+              <input type="number"
+                style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: 10, color: 'var(--text-primary)', fontSize: 13 }}
+                value={fd.sim_marks}
+                onChange={e => setFd({ ...fd, sim_marks: e.target.value })} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div>
+        <Label>Explanation / Hint (Optional)</Label>
+        <input style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: 10, color: 'var(--text-primary)', fontSize: 13 }}
+          value={fd.explanation} onChange={e => setFd({...fd, explanation: e.target.value})} />
+      </div>
+
+      <button type="submit" className="btn-primary" style={{ padding: '12px 0', marginTop: 16 }}>
+        <Save size={16} /> {submitLabel}
+      </button>
+    </form>
+  );
+}
+
 export function AdminQuestions() {
   const user = useStore(state => state.user);
 
@@ -45,22 +177,6 @@ export function AdminQuestions() {
 
   const fileInputRef = useRef(null);
 
-  const parseStyle = (str) => {
-    const obj = {};
-    if (!str) return obj;
-    str.split(';').forEach(pair => {
-      const [k, v] = pair.split(':');
-      if (k && v) obj[k.trim().replace(/-([a-z])/g, g => g[1].toUpperCase())] = v.trim();
-    });
-    return obj;
-  };
-
-  const Label = ({ children }) => (
-    <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
-      {children}
-    </label>
-  );
-
   // ── Data Fetching ──────────────────────────────────────────
   const fetchData = useCallback(async () => {
     const [{ data: qData }, { data: eData }] = await Promise.all([
@@ -71,10 +187,21 @@ export function AdminQuestions() {
     if (eData) setEvents(eData);
   }, []);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchData();
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [fetchData]);
 
   useEffect(() => {
-    if (!selectedEventId) { setEventQuestions([]); setEventQMeta([]); return; }
+    if (!selectedEventId) {
+      const timer = setTimeout(() => {
+        setEventQuestions([]);
+        setEventQMeta([]);
+      }, 0);
+      return () => clearTimeout(timer);
+    }
     supabase
       .from('event_questions')
       .select('id, question_id, order_num')
@@ -255,130 +382,6 @@ export function AdminQuestions() {
     });
     e.target.value = '';
   };
-
-  // ── Question Form Fields ───────────────────────────────────
-  const QuestionFields = ({ fd, setFd, submitLabel, onSubmit }) => (
-    <form onSubmit={onSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {/* Question Type Toggle */}
-      <div style={{ display: 'flex', gap: 8 }}>
-        <button type="button"
-          onClick={() => setFd({ ...fd, question_type: 'mcq' })}
-          className="btn-ghost"
-          style={{ 
-            flex: 1, 
-            fontSize: 11,
-            background: fd.question_type !== 'simulation' ? 'var(--blue)' : 'var(--elevated)',
-            color: fd.question_type !== 'simulation' ? '#fff' : 'var(--text-muted)'
-          }}>
-          MCQ Question
-        </button>
-        <button type="button"
-          onClick={() => setFd({ ...fd, question_type: 'simulation' })}
-          className="btn-ghost"
-          style={{ 
-            flex: 1, 
-            fontSize: 11,
-            background: fd.question_type === 'simulation' ? 'var(--blue)' : 'var(--elevated)',
-            color: fd.question_type === 'simulation' ? '#fff' : 'var(--text-muted)'
-          }}>
-          Simulation (Wokwi)
-        </button>
-      </div>
-
-      <div>
-        <Label>{fd.question_type === 'simulation' ? "Simulation Title" : "Question Text"}</Label>
-        <textarea required rows={3}
-          style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: 12, color: 'var(--text-primary)', fontSize: 14, resize: 'none' }}
-          value={fd.question} onChange={e => setFd({...fd, question: e.target.value})} />
-      </div>
-
-      {fd.question_type !== 'simulation' && (
-        <>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            {['A','B','C','D'].map(letter => (
-              <div key={letter}>
-                <Label>Option {letter}</Label>
-                <div style={{ position: 'relative' }}>
-                  <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 10, fontWeight: 900, color: fd.correct === letter ? 'var(--blue)' : 'var(--text-muted)' }}>{letter}</span>
-                  <input required placeholder={`Option ${letter}`}
-                    style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px 10px 32px', color: 'var(--text-primary)', fontSize: 13 }}
-                    value={fd[`opt${letter}`]}
-                    onChange={e => setFd({...fd, [`opt${letter}`]: e.target.value})}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-            <div>
-              <Label>Correct Answer</Label>
-              <select style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: 10, color: 'var(--text-primary)', fontSize: 13 }}
-                value={fd.correct} onChange={e => setFd({...fd, correct: e.target.value})}>
-                <option value="A">A</option><option value="B">B</option>
-                <option value="C">C</option><option value="D">D</option>
-              </select>
-            </div>
-            <div>
-              <Label>Difficulty</Label>
-              <select style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: 10, color: 'var(--text-primary)', fontSize: 13 }}
-                value={fd.difficulty} onChange={e => setFd({...fd, difficulty: e.target.value})}>
-                <option value="easy">Easy</option>
-                <option value="medium">Medium</option>
-                <option value="hard">Hard</option>
-              </select>
-            </div>
-          </div>
-        </>
-      )}
-
-      {fd.question_type === 'simulation' && (
-        <div style={{ padding: 16, background: 'rgba(59,130,246,0.03)', border: '1px solid var(--border)', borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div>
-            <Label>Wokwi Embed URL</Label>
-            <input required placeholder="https://wokwi.com/projects/..."
-              style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: 10, color: 'var(--text-primary)', fontSize: 13 }}
-              value={fd.wokwi_url}
-              onChange={e => setFd({ ...fd, wokwi_url: e.target.value })} />
-          </div>
-          
-          <div>
-            <Label>Instructions</Label>
-            <textarea rows={4} required
-              style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: 10, color: 'var(--text-primary)', fontSize: 13, resize: 'none' }}
-              value={fd.sim_instructions}
-              onChange={e => setFd({ ...fd, sim_instructions: e.target.value })} />
-          </div>
-          
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div>
-              <Label>Expected Output</Label>
-              <input style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: 10, color: 'var(--text-primary)', fontSize: 13 }}
-                value={fd.sim_expected_output}
-                onChange={e => setFd({ ...fd, sim_expected_output: e.target.value })} />
-            </div>
-            <div>
-              <Label>Marks</Label>
-              <input type="number"
-                style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: 10, color: 'var(--text-primary)', fontSize: 13 }}
-                value={fd.sim_marks}
-                onChange={e => setFd({ ...fd, sim_marks: e.target.value })} />
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div>
-        <Label>Explanation / Hint (Optional)</Label>
-        <input style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: 10, color: 'var(--text-primary)', fontSize: 13 }}
-          value={fd.explanation} onChange={e => setFd({...fd, explanation: e.target.value})} />
-      </div>
-
-      <button type="submit" className="btn-primary" style={{ padding: '12px 0', marginTop: 16 }}>
-        <Save size={16} /> {submitLabel}
-      </button>
-    </form>
-  );
 
   const selectedEvent = events.find(e => e.id === selectedEventId);
 

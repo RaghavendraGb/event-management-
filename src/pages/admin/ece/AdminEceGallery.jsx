@@ -7,6 +7,12 @@ import { Image, Plus, Trash2, Loader2, Check, X } from 'lucide-react';
 const CATEGORIES = ['general', 'lab', 'project', 'event', 'batch'];
 const EMPTY_FORM = { title: '', description: '', category: 'general', image_url: '', public_id: '' };
 
+const Label = ({ children }) => (
+  <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
+    {children}
+  </label>
+);
+
 export function AdminEceGallery() {
   const [photos, setPhotos] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -16,12 +22,6 @@ export function AdminEceGallery() {
   const [selected, setSelected] = useState(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
-
-  const Label = ({ children }) => (
-    <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
-      {children}
-    </label>
-  );
 
   const loadPhotos = () => {
     supabase.from('ece_gallery').select('*').order('created_at', { ascending: false })

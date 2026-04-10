@@ -98,7 +98,7 @@ export function AdminParticipants() {
         videoRef.current.setAttribute("playsinline", true);
         videoRef.current.play();
         requestAnimationFrame(tick);
-      } catch(e) {
+      } catch {
         alert("Camera forbidden or not found");
         scannerOpenRef.current = false;
         setScannerOpen(false);
@@ -145,7 +145,7 @@ export function AdminParticipants() {
       } else {
         setScanResult({ valid: false, message: "Ticket ID not found in this event's ledger" });
       }
-    } catch(e) {
+    } catch {
       setScanResult({ valid: false, message: "Invalid QR Code Format" });
     }
   };

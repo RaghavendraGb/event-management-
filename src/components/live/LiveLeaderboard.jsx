@@ -1,6 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
-import { motion, AnimatePresence } from 'framer-motion';
 import { Trophy, Users, User, Radio, Clock } from 'lucide-react';
 
 export function LiveLeaderboard({ eventId, currentUserId, limit = 10, isProjector = false }) {
@@ -53,7 +52,9 @@ export function LiveLeaderboard({ eventId, currentUserId, limit = 10, isProjecto
   }, [eventId, currentUserId]);
 
   useEffect(() => {
-    fetchBoard();
+    const initialFetchTimer = setTimeout(() => {
+      fetchBoard();
+    }, 0);
 
     const isRealtimeConnectedRef = { current: false };
     // Fix #3: track prior disconnect so we can re-sync on reconnect
@@ -116,6 +117,7 @@ export function LiveLeaderboard({ eventId, currentUserId, limit = 10, isProjecto
     }, 5000);
 
     return () => {
+      clearTimeout(initialFetchTimer);
       supabase.removeChannel(channel);
       if (pollerTimer) clearTimeout(pollerTimer);
       if (pollerInterval) clearInterval(pollerInterval);
@@ -181,7 +183,7 @@ export function LiveLeaderboard({ eventId, currentUserId, limit = 10, isProjecto
       .sort((a, b) => b.score - a.score)
       .slice(0, limit)
       .map((t, i) => ({ ...t, rank: i + 1 }));
-  }, [activeEntries, tab, limit, mode]);
+  }, [activeEntries, tab, limit]);
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', padding: isProjector ? 32 : 16 }}>
@@ -231,15 +233,9 @@ export function LiveLeaderboard({ eventId, currentUserId, limit = 10, isProjecto
       {/* Roster */}
       <div style={{ flex: 1, position: 'relative' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <AnimatePresence>
             {renderList.map((item, index) => (
-              <motion.div
+              <div
                 key={item.id || item.uniqueId || index}
-                layout
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.98 }}
-                transition={{ duration: 0.2 }}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -299,9 +295,8 @@ export function LiveLeaderboard({ eventId, currentUserId, limit = 10, isProjecto
                   </p>
                   {isProjector && <p style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>PTS</p>}
                 </div>
-              </motion.div>
+              </div>
             ))}
-          </AnimatePresence>
 
           {renderList.length === 0 && (
             <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)', border: '1px dashed var(--border)', borderRadius: 8, fontSize: 13 }}>

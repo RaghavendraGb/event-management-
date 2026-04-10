@@ -2,11 +2,17 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { deleteFromCloudinary } from '../../../lib/cloudinary';
 import { CloudinaryUpload } from '../../../components/ece/CloudinaryUpload';
-import { extractYouTubeId } from '../../../components/ece/YouTubePlayer';
+import { extractYouTubeId } from '../../../lib/youtube';
 import { BookOpen, Plus, Trash2, Loader2, X, Check, GripVertical, Pencil } from 'lucide-react';
 
 const TYPES = ['pdf', 'video', 'career', 'image'];
 const EMPTY_FORM = { topic_id: '', type: 'pdf', title: '', description: '', url: '', public_id: '', youtube_id: '', order_num: 0 };
+
+const Label = ({ children }) => (
+  <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
+    {children}
+  </label>
+);
 
 export function AdminEceResources() {
   const [topics, setTopics] = useState([]);
@@ -24,12 +30,6 @@ export function AdminEceResources() {
   const [editForm, setEditForm] = useState(EMPTY_FORM);
   const [editYoutubeInput, setEditYoutubeInput] = useState('');
 
-  const Label = ({ children }) => (
-    <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
-      {children}
-    </label>
-  );
-
   const loadData = async () => {
     const [topicsRes, resRes] = await Promise.all([
       supabase.from('ece_topics').select('id, name').order('order_num'),
@@ -40,7 +40,12 @@ export function AdminEceResources() {
     setLoading(false);
   };
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      loadData();
+    }, 0);
+    return () => clearTimeout(timer);
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();

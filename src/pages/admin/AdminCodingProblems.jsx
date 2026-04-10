@@ -1,11 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
-import { useStore } from '../../store';
 import { CodeXml, Plus, Trash2, Save, FileCode, CircleCheck, CircleAlert, LayoutDashboard, ListOrdered, Eye, EyeOff } from 'lucide-react';
 
 export function AdminCodingProblems() {
-  const user = useStore((state) => state.user);
-  
   const [events, setEvents] = useState([]);
   const [selectedEventId, setSelectedEventId] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -58,8 +55,23 @@ export function AdminCodingProblems() {
   }, []);
 
   useEffect(() => {
-    fetchEvents();
+    const timer = setTimeout(() => {
+      fetchEvents();
+    }, 0);
+    return () => clearTimeout(timer);
   }, [fetchEvents]);
+
+  const loadTestCases = useCallback(async (probId) => {
+    const { data: tcs } = await supabase
+      .from('coding_test_cases')
+      .select('*')
+      .eq('problem_id', probId)
+      .order('order_num', { ascending: true });
+    if (tcs) {
+      setTestCases(tcs);
+      setNewTestCase(prev => ({ ...prev, order_num: tcs.length + 1 }));
+    }
+  }, []);
 
   const loadProblem = useCallback(async (eventId) => {
     const { data: prob } = await supabase
@@ -93,19 +105,7 @@ export function AdminCodingProblems() {
       setProblemId(null);
       setTestCases([]);
     }
-  }, []);
-
-  const loadTestCases = async (probId) => {
-    const { data: tcs } = await supabase
-      .from('coding_test_cases')
-      .select('*')
-      .eq('problem_id', probId)
-      .order('order_num', { ascending: true });
-    if (tcs) {
-      setTestCases(tcs);
-      setNewTestCase(prev => ({ ...prev, order_num: tcs.length + 1 }));
-    }
-  };
+  }, [loadTestCases]);
 
   const handleSelectEvent = (eventId) => {
     setSelectedEventId(eventId);

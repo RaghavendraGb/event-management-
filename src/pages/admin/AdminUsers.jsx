@@ -47,7 +47,12 @@ export function AdminUsers() {
     setLoading(false);
   }, []);
 
-  useEffect(() => { fetchUsers(); }, [fetchUsers]);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchUsers();
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [fetchUsers]);
 
   // ── Approve User ────────────────────────────────────────────
   const approveUser = async (userId) => {
@@ -79,22 +84,6 @@ export function AdminUsers() {
     setActionLoading(null);
   };
 
-  // ── Reject User (Soft delete — status = 'rejected') ────────────
-  // J: Soft rejects block login via App.jsx fetchProfile without removing data
-  const rejectUser = async (userId, userName) => {
-    if (!confirm(`Reject "${userName}"? They will be signed out and permanently blocked from logging in.`)) return;
-    setActionLoading(userId);
-    const { error } = await supabase
-      .from('users')
-      .update({ status: 'rejected' })
-      .eq('id', userId);
-    if (error) { alert('Error: ' + error.message); }
-    else {
-      setUsers(prev => prev.map(u => u.id === userId ? { ...u, status: 'rejected' } : u));
-    }
-    setActionLoading(null);
-  };
-
   // ── Hard Remove User ─────────────────────────────────────────
   const removeUser = async (userId, userName) => {
     if (!confirm(`⚠️ HARD DELETE user "${userName}"? This permanently removes all their data. Cannot be undone.`)) return;
@@ -119,8 +108,6 @@ export function AdminUsers() {
   });
 
   const pendingCount = users.filter(u => u.status === 'pending').length;
-  const rejectedCount = users.filter(u => u.status === 'rejected').length;
-
   return (
     <div className="p-6 md:p-10 max-w-7xl mx-auto space-y-8">
 

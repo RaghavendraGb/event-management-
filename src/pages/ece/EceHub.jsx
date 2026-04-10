@@ -15,23 +15,22 @@ const quickLinks = [
 ];
 
 export function EceHub() {
-  const [showHub, setShowHub] = useState(false);
-  const [topics, setTopics] = useState([]);
-  const [fadeIn, setFadeIn] = useState(false);
-
-  // Check if animation was already played
-  useEffect(() => {
+  const [showHub, setShowHub] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     const forceReset = params.get('reset') === '1';
     if (forceReset) {
       localStorage.removeItem('ece-animation-done');
+      return false;
     }
-    const done = localStorage.getItem('ece-animation-done');
-    if (done && !forceReset) {
-      setShowHub(true);
-      setFadeIn(true);
-    }
-  }, []);
+    return !!localStorage.getItem('ece-animation-done');
+  });
+  const [topics, setTopics] = useState([]);
+  const [fadeIn, setFadeIn] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    const forceReset = params.get('reset') === '1';
+    if (forceReset) return false;
+    return !!localStorage.getItem('ece-animation-done');
+  });
 
   // Pre-fetch topics immediately (runs during animation, data ready by ENTER)
   useEffect(() => {

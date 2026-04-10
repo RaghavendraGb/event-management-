@@ -31,13 +31,12 @@ export function TerminalAnimation({ onComplete }) {
   const [currentLine, setCurrentLine] = useState('');
   const [currentLineIndex, setCurrentLineIndex] = useState(0);
   const [currentCharIndex, setCurrentCharIndex] = useState(0);
-  const [showEnter, setShowEnter] = useState(false);
   const [done, setDone] = useState(false);
   const bottomRef = useRef(null);
+  const showEnter = currentLineIndex >= ANIMATION_LINES.length;
 
   useEffect(() => {
     if (currentLineIndex >= ANIMATION_LINES.length) {
-      setShowEnter(true);
       return;
     }
 
@@ -72,7 +71,6 @@ export function TerminalAnimation({ onComplete }) {
     setCurrentLine('');
     setCurrentLineIndex(ANIMATION_LINES.length);
     setCurrentCharIndex(0);
-    setShowEnter(true);
   };
 
   // Keyboard skip: Escape or Space

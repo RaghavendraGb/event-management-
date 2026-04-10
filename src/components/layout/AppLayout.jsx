@@ -13,11 +13,15 @@ export function AppLayout() {
 
   useEffect(() => {
     if (networkStatus === 'recovery') {
-      setShowRecovery(true);
-      const t = setTimeout(() => setShowRecovery(false), 4000);
-      return () => clearTimeout(t);
+      const showTimer = setTimeout(() => setShowRecovery(true), 0);
+      const hideTimer = setTimeout(() => setShowRecovery(false), 4000);
+      return () => {
+        clearTimeout(showTimer);
+        clearTimeout(hideTimer);
+      };
     } else {
-      setShowRecovery(false);
+      const t = setTimeout(() => setShowRecovery(false), 0);
+      return () => clearTimeout(t);
     }
   }, [networkStatus]);
 

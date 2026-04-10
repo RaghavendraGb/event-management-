@@ -40,6 +40,7 @@ export function LiveCoding() {
   const violationsRef = useRef(0);
   const isSubmittingRef = useRef(false);
   const isMountedRef = useRef(true);
+  const autoSubmitRef = useRef(null);
 
   const fetchHistory = useCallback(async () => {
     if (!user) return;
@@ -107,7 +108,7 @@ export function LiveCoding() {
       const distance = new Date(eventData.end_at).getTime() - Date.now();
       if (distance <= 0) {
         clearInterval(interval);
-        if (!isSubmittingRef.current) autoSubmit();
+        if (!isSubmittingRef.current) autoSubmitRef.current?.();
       } else {
         const h = Math.floor(distance / (1000 * 60 * 60));
         const m = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
@@ -136,7 +137,7 @@ export function LiveCoding() {
         }
 
         if (newV >= 3) {
-          autoSubmit();
+          autoSubmitRef.current?.();
         }
       }
     };
@@ -213,7 +214,7 @@ export function LiveCoding() {
         });
       }
       setRunResults(results);
-    } catch (e) {
+    } catch {
       alert('Compiler unavailable. Please check your connection and try again.');
     } finally {
       setIsRunning(false);
@@ -261,26 +262,14 @@ export function LiveCoding() {
           stderr 
         }]); 
       }
-    } catch (e) {
+    } catch {
       alert('Compiler unavailable. Please check your connection and try again.');
     } finally {
       setIsRunning(false);
     }
   };
 
-  const handleSubmit = async () => {
-    if (!window.confirm('Submit your code? This will be judged against all hidden cases.')) return;
-    judgeSubmission();
-  };
-
-  const autoSubmit = async () => {
-    isSubmittingRef.current = true;
-    setIsSubmitting(true);
-    await judgeSubmission();
-    navigate(`/results/${id}`);
-  };
-
-  const judgeSubmission = async () => {
+  const judgeSubmission = useCallback(async () => {
     setIsSubmitting(true);
     setBottomTab('results');
     try {
@@ -301,7 +290,23 @@ export function LiveCoding() {
     } finally {
       setIsSubmitting(false);
     }
+  }, [editorCode, fetchHistory, id, problem?.id, user?.id]);
+
+  const handleSubmit = async () => {
+    if (!window.confirm('Submit your code? This will be judged against all hidden cases.')) return;
+    judgeSubmission();
   };
+
+  const autoSubmit = useCallback(async () => {
+    isSubmittingRef.current = true;
+    setIsSubmitting(true);
+    await judgeSubmission();
+    navigate(`/results/${id}`);
+  }, [id, judgeSubmission, navigate]);
+
+  useEffect(() => {
+    autoSubmitRef.current = autoSubmit;
+  }, [autoSubmit]);
 
   const handleTabKey = (e) => {
     if (e.key === 'Tab') {

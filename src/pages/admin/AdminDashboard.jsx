@@ -2,9 +2,28 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Link } from 'react-router-dom';
 import { 
-  BarChart3, Calendar, Users, Award, 
-  Activity, ArrowRight, Play, CheckCircle2 
+  Calendar, Users, Award, 
+  Activity, ArrowRight, CheckCircle2 
 } from 'lucide-react';
+
+function StatCard({ title, value, icon, color, description }) {
+  const CardIcon = icon;
+  return (
+    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: 32, display: 'flex', flexDirection: 'column', gap: 16, transition: 'all 0.2s', position: 'relative', overflow: 'hidden' }} className="hover-elevated">
+      <div style={{ position: 'absolute', top: -20, right: -20, width: 80, height: 80, borderRadius: '50%', background: color, opacity: 0.03, filter: 'blur(20px)' }} />
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ width: 44, height: 44, borderRadius: 12, background: 'var(--elevated)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', color }}>
+          <CardIcon size={20} />
+        </div>
+        <p style={{ fontSize: 10, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{title}</p>
+      </div>
+      <div>
+        <h3 style={{ fontSize: 36, fontWeight: 900, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>{value}</h3>
+        {description && <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>{description}</p>}
+      </div>
+    </div>
+  );
+}
 
 export function AdminDashboard() {
   const [stats, setStats] = useState({
@@ -44,22 +63,6 @@ export function AdminDashboard() {
   }, []);
 
   if (loading) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60dvh' }}><div style={{ width: 40, height: 40, border: '3px solid var(--elevated)', borderTopColor: 'var(--blue)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} /></div>;
-
-  const StatCard = ({ title, value, icon: Icon, color, description }) => (
-    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: 32, display: 'flex', flexDirection: 'column', gap: 16, transition: 'all 0.2s', position: 'relative', overflow: 'hidden' }} className="hover-elevated">
-      <div style={{ position: 'absolute', top: -20, right: -20, width: 80, height: 80, borderRadius: '50%', background: color, opacity: 0.03, filter: 'blur(20px)' }} />
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{ width: 44, height: 44, borderRadius: 12, background: 'var(--elevated)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', color }}>
-          <Icon size={20} />
-        </div>
-        <p style={{ fontSize: 10, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{title}</p>
-      </div>
-      <div>
-        <h3 style={{ fontSize: 36, fontWeight: 900, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>{value}</h3>
-        {description && <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>{description}</p>}
-      </div>
-    </div>
-  );
 
   return (
     <div className="p-6 md:p-10 max-w-7xl mx-auto space-y-12">

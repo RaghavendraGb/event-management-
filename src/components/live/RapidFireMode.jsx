@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Flame, AlertTriangle } from 'lucide-react';
 import { serverNow } from '../../lib/supabase';
 
@@ -8,7 +8,7 @@ import { serverNow } from '../../lib/supabase';
 const rfqKey = (userId, eventId, idx) =>
   `rfq_${userId ?? 'anon'}_${eventId}_${idx}_v2`;
 
-export function RapidFireMode({ questions, answers, answerQuestion, onSubmit, isSubmitting, eventId, userId }) {
+export function RapidFireMode({ questions, answers, answerQuestion, onSubmit, eventId, userId }) {
   // FIX #7: ALL hooks defined before any conditional return
   const [currentIndex, setCurrentIndex] = useState(0);
   const [timeLeft, setTimeLeft] = useState(15);
@@ -64,8 +64,10 @@ export function RapidFireMode({ questions, answers, answerQuestion, onSubmit, is
     if (firstUnanswered < questions.length) {
       const limit = questions[firstUnanswered].time_limit_seconds || 15;
       const restored = getRestoredTimeLeft(firstUnanswered, limit);
-      setCurrentIndex(firstUnanswered);
-      setTimeLeft(restored > 0 ? restored : limit);
+      setTimeout(() => {
+        setCurrentIndex(firstUnanswered);
+        setTimeLeft(restored > 0 ? restored : limit);
+      }, 0);
       if (eventId && !localStorage.getItem(rfqKey(userId, eventId, firstUnanswered))) {
         persistQuestionStart(firstUnanswered);
       }

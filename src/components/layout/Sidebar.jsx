@@ -110,6 +110,40 @@ function SectionLabel({ children }) {
   );
 }
 
+function SidebarNav({ isAdmin, handleNavClick, onItemClick }) {
+  return (
+    <nav style={{ flex: 1, padding: '12px 8px', overflowY: 'auto' }} className="custom-scrollbar">
+      <SectionLabel>Menu</SectionLabel>
+      {navItems.map((item) => (
+        <NavLink key={item.path} item={item} onClick={(e) => { handleNavClick(e, item.path); onItemClick?.(); }} />
+      ))}
+
+      {isAdmin && (
+        <>
+          <SectionLabel>Admin</SectionLabel>
+          {adminItems.map((item) => (
+            <NavLink key={item.path} item={item} onClick={() => onItemClick?.()} />
+          ))}
+        </>
+      )}
+
+      <SectionLabel>ECE Hub</SectionLabel>
+      {eceItems.map((item) => (
+        <NavLink key={item.path} item={item} onClick={() => onItemClick?.()} />
+      ))}
+
+      {isAdmin && (
+        <>
+          <SectionLabel>ECE Admin</SectionLabel>
+          {eceAdminItems.map((item) => (
+            <NavLink key={item.path} item={item} onClick={() => onItemClick?.()} />
+          ))}
+        </>
+      )}
+    </nav>
+  );
+}
+
 export function Sidebar() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -146,39 +180,6 @@ export function Sidebar() {
   };
 
   const userInitial = user?.name?.charAt(0) || user?.email?.charAt(0) || '?';
-
-  // Sidebar nav content (reused in drawer)
-  const SidebarNav = ({ onItemClick }) => (
-    <nav style={{ flex: 1, padding: '12px 8px', overflowY: 'auto' }} className="custom-scrollbar">
-      <SectionLabel>Menu</SectionLabel>
-      {navItems.map((item) => (
-        <NavLink key={item.path} item={item} onClick={(e) => { handleNavClick(e, item.path); onItemClick?.(); }} />
-      ))}
-
-      {isAdmin && (
-        <>
-          <SectionLabel>Admin</SectionLabel>
-          {adminItems.map((item) => (
-            <NavLink key={item.path} item={item} onClick={() => onItemClick?.()} />
-          ))}
-        </>
-      )}
-
-      <SectionLabel>ECE Hub</SectionLabel>
-      {eceItems.map((item) => (
-        <NavLink key={item.path} item={item} onClick={() => onItemClick?.()} />
-      ))}
-
-      {isAdmin && (
-        <>
-          <SectionLabel>ECE Admin</SectionLabel>
-          {eceAdminItems.map((item) => (
-            <NavLink key={item.path} item={item} onClick={() => onItemClick?.()} />
-          ))}
-        </>
-      )}
-    </nav>
-  );
 
   return (
     <>
@@ -249,7 +250,7 @@ export function Sidebar() {
           </div>
         )}
 
-        <SidebarNav />
+        <SidebarNav isAdmin={isAdmin} handleNavClick={handleNavClick} />
 
         {/* User footer */}
         <div style={{ padding: '12px 8px', borderTop: '1px solid var(--border)' }}>

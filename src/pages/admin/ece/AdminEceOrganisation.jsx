@@ -15,8 +15,13 @@ const DEFAULT_CREATORS = [
 const EMPTY_FACULTY = { name: '', designation: '', quote: '', photo_url: '', photo_public_id: '', order_num: 0 };
 const EMPTY_CREATOR = { name: '', role: '', instagram: '', github: '', phone: '', photo_url: '', photo_public_id: '', order_num: 0 };
 
+const Label = ({ children }) => (
+  <label style={{ display: 'flex', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
+    {children}
+  </label>
+);
+
 export function AdminEceOrganisation() {
-  const [org, setOrg] = useState(null);
   const [orgId, setOrgId] = useState(null);
   const [creators, setCreators] = useState([]);
   const [faculty, setFaculty] = useState([]);
@@ -45,7 +50,6 @@ export function AdminEceOrganisation() {
       supabase.from('ece_faculty').select('*').order('order_num'),
     ]);
     if (orgRes.data) {
-      setOrg(orgRes.data);
       setOrgId(orgRes.data.id);
       setOrgForm({ college_name: orgRes.data.college_name, department: orgRes.data.department, hod_name: orgRes.data.hod_name, hod_message: orgRes.data.hod_message || '', acknowledgements: orgRes.data.acknowledgements || '' });
     }
@@ -55,7 +59,10 @@ export function AdminEceOrganisation() {
   };
 
   useEffect(() => {
-    loadData();
+    const timer = setTimeout(() => {
+      loadData();
+    }, 0);
+    return () => clearTimeout(timer);
   }, []);
 
   // -- Seed default creators if none exist --
@@ -129,12 +136,6 @@ export function AdminEceOrganisation() {
     setDeletingCreatorId(null);
     loadData();
   };
-
-  const Label = ({ children }) => (
-    <label style={{ display: 'flex', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
-      {children}
-    </label>
-  );
 
   if (loading) {
     return (

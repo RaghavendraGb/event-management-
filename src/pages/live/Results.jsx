@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useStore } from '../../store';
-import { motion, AnimatePresence } from 'framer-motion';
+import { AnimatePresence } from 'framer-motion';
 import confetti from 'canvas-confetti';
 import { Award, Share2, CheckCircle2, XCircle, Trophy, Clock, Users } from 'lucide-react';
 // FIX #15: ref to track confetti interval for cleanup
@@ -213,7 +213,7 @@ export function Results() {
       const t = setTimeout(() => setPhase('complete'), 5000);
       return () => clearTimeout(t);
     }
-  }, [phase]);
+  }, [phase, eventData?.type, id, questions.length, user?.id]);
 
   const playDrumRoll = () => {
     try {
@@ -255,7 +255,7 @@ export function Results() {
         audioCtx.close().catch(() => {});
         audioCtxRef.current = null;
       };
-    } catch(e) {
+    } catch {
       console.warn("Audio Context blocked by browser policy without interaction");
     }
   };

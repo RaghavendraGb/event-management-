@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { DoubtForm } from '../../components/ece/DoubtForm';
 import { useStore } from '../../store';
@@ -11,7 +11,7 @@ export function EceDoubts() {
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(null);
 
-  const loadDoubts = () => {
+  const loadDoubts = useCallback(() => {
     supabase
       .from('ece_doubts')
       .select('id, topic_id, message, admin_reply, is_resolved, created_at, sender_id, ece_topics(name)')
@@ -20,9 +20,9 @@ export function EceDoubts() {
         setDoubts(data || []);
         setLoading(false);
       });
-  };
+  }, []);
 
-  useEffect(() => { loadDoubts(); }, []);
+  useEffect(() => { loadDoubts(); }, [loadDoubts]);
 
   // Realtime: re-fetch on INSERT (new doubt) or UPDATE (admin reply/resolve)
   useEffect(() => {
@@ -40,7 +40,7 @@ export function EceDoubts() {
       )
       .subscribe();
     return () => supabase.removeChannel(channel);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [loadDoubts]);
 
   const formatDate = (d) =>
     d ? new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '';

@@ -1,10 +1,9 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { UserCheck, Clock } from 'lucide-react';
 
 export function Signup() {
-  const navigate = useNavigate();
   const [name, setName] = useState('');
   const [college, setCollege] = useState('');
   const [email, setEmail] = useState('');

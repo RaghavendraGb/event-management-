@@ -97,7 +97,13 @@ export function AdminEvents() {
     if (data) setQuestions(data);
   }, []);
 
-  useEffect(() => { fetchEvents(); fetchQuestions(); }, [fetchEvents, fetchQuestions]);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchEvents();
+      fetchQuestions();
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [fetchEvents, fetchQuestions]);
 
   // Load event questions when expanding
   const toggleExpand = async (eventId) => {
@@ -166,7 +172,7 @@ export function AdminEvents() {
 
   const handleUpdate = async (e) => {
     e.preventDefault();
-    const { question_count, ...rest } = formData;
+    const { ...rest } = formData;
     const payload = {
       ...rest,
       start_at: dayStart(formData.start_at),
@@ -231,15 +237,6 @@ export function AdminEvents() {
     else alert(error.message);
     setConfirmModal(null);
     setConfirmInput('');
-  };
-
-  const setStatusDirect = async (id, status) => {
-    // For reset-to-upcoming (less dangerous), no guard needed
-    const updates = { status };
-    if (status === 'upcoming') updates.results_announced = false; 
-    const { error } = await supabase.from('events').update(updates).eq('id', id);
-    if (!error) fetchEvents();
-    else alert(error.message);
   };
 
   // ── Delete ─────────────────────────────────────────────────

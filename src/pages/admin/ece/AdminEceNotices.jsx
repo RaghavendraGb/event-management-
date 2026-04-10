@@ -6,6 +6,12 @@ import { Bell, Plus, Trash2, Loader2, Eye, EyeOff, Check, X, Pencil } from 'luci
 const TYPES = ['info', 'urgent', 'exam', 'lab', 'event'];
 const EMPTY_FORM = { title: '', content: '', type: 'info', expires_at: '', is_active: true };
 
+const Label = ({ children }) => (
+  <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
+    {children}
+  </label>
+);
+
 export function AdminEceNotices() {
   const [notices, setNotices] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -14,12 +20,6 @@ export function AdminEceNotices() {
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
-
-  const Label = ({ children }) => (
-    <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
-      {children}
-    </label>
-  );
 
   const loadNotices = () => {
     supabase.from('ece_notices').select('*').order('created_at', { ascending: false })
@@ -71,8 +71,6 @@ export function AdminEceNotices() {
     await supabase.from('ece_notices').update({ is_active: !notice.is_active }).eq('id', notice.id);
     loadNotices();
   };
-
-  const typeColor = { info: '#3b82f6', urgent: '#ef4444', exam: '#f59e0b', lab: '#8b5cf6', event: '#10b981' };
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8 space-y-8">

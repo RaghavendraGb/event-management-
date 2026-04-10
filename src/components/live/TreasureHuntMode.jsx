@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Map, AlertCircle, Key, AlertTriangle } from 'lucide-react';
 
-export function TreasureHuntMode({ questions, answers, answerQuestion, onSubmit, isSubmitting }) {
+export function TreasureHuntMode({ questions, answers, answerQuestion, onSubmit }) {
   // FIX #10: ALL hooks defined before any conditional return
   const [level, setLevel] = useState(0);
   const [wrongTries, setWrongTries] = useState(0);

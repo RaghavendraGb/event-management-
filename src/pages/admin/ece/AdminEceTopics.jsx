@@ -8,6 +8,12 @@ const DEFAULT_COLORS = ['#3b82f6','#8b5cf6','#ec4899','#10b981','#f59e0b','#ef44
 
 const EMPTY_FORM = { name: '', description: '', color: '#3b82f6', icon_url: '', icon_public_id: '', order_num: 0, position_x: 450, position_y: 310 };
 
+const Label = ({ children }) => (
+  <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
+    {children}
+  </label>
+);
+
 // ── Mini drag-preview canvas for mind map position ────────────────
 function PositionCanvas({ x, y, onChange }) {
   const canvasRef = useRef(null);
@@ -99,12 +105,6 @@ export function AdminEceTopics() {
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
-
-  const Label = ({ children }) => (
-    <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
-      {children}
-    </label>
-  );
 
   const loadTopics = () => {
     supabase.from('ece_topics').select('*, ece_resources(id)').order('order_num')
