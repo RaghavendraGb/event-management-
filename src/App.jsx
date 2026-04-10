@@ -12,6 +12,7 @@ import { Login } from './pages/Login';
 import { Signup } from './pages/Signup';
 import { Dashboard } from './pages/Dashboard';
 import { Leaderboard } from './pages/Leaderboard';
+import { Profile } from './pages/Profile';
 
 // Event Pages
 import { EventList } from './pages/events/EventList';
@@ -133,11 +134,13 @@ function App() {
           <Route path="/events" element={<EventList />} />
           <Route path="/events/:id" element={<EventDetail />} />
           <Route path="/leaderboard/:id" element={<Leaderboard />} />
+          <Route path="/profile/:userId" element={<Profile />} />
           <Route path="/verify/:cert_uid" element={<Verify />} />
 
           {/* Regular Protected Routes */}
           <Route element={<ProtectedRoute />}>
             <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/profile" element={<Profile />} />
             <Route path="/lobby/:id" element={<Lobby />} />
             <Route path="/live/:id" element={<LiveEvent />} />
             <Route path="/results/:id" element={<Results />} />

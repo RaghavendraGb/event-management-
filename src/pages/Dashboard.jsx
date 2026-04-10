@@ -97,9 +97,14 @@ export function Dashboard() {
             {stats.joined > 0 ? ` · ${stats.joined} event${stats.joined !== 1 ? 's' : ''} joined` : ''}
           </p>
         </div>
-        <Link to="/events" className="btn-primary" style={{ flexShrink: 0 }}>
-          Find Events
-        </Link>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <Link to={`/profile/${user?.id}`} className="btn-ghost" style={{ flexShrink: 0 }}>
+            Public Profile
+          </Link>
+          <Link to="/events" className="btn-primary" style={{ flexShrink: 0 }}>
+            Find Events
+          </Link>
+        </div>
       </div>
 
       {/* Stats strip */}

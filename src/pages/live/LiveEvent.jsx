@@ -67,6 +67,8 @@ export function LiveEvent() {
   const [timeLeftStr, setTimeLeftStr] = useState('');
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [simDone, setSimDone] = useState(false);
+  const [hasPendingSync, setHasPendingSync] = useState(false);
+  const [submitQueued, setSubmitQueued] = useState(false);
 
   // ── H: Realtime connection status for network-aware UI ────────
   const [realtimeStatus, setRealtimeStatus] = useState('connected');
@@ -75,6 +77,10 @@ export function LiveEvent() {
 
   // Fix #6: retry cooldown to prevent spam-clicking the Retry button
   const [retrying, setRetrying] = useState(false);
+
+  const ANSWERS_KEY = `event_${id}_answers`;
+  const PENDING_SYNC_KEY = `event_${id}_pending_sync`;
+  const PENDING_SUBMIT_KEY = `event_${id}_pending_submit`;
 
   // Fix #8: helper to purge all localStorage keys belonging to this event
   const cleanupEventKeys = useCallback(() => {
@@ -112,8 +118,17 @@ export function LiveEvent() {
     };
   }, [clearLiveEventRuntime]);
 
-  const syncQueueRef = useRef([]);
   const syncWorkerRunning = useRef(false);
+
+  const persistPendingSync = useCallback((payload) => {
+    localStorage.setItem(PENDING_SYNC_KEY, JSON.stringify(payload));
+    if (isMountedRef.current) setHasPendingSync(true);
+  }, [PENDING_SYNC_KEY]);
+
+  const clearPendingSync = useCallback(() => {
+    localStorage.removeItem(PENDING_SYNC_KEY);
+    if (isMountedRef.current) setHasPendingSync(false);
+  }, [PENDING_SYNC_KEY]);
 
   // ── 1. Core Boot Sequence ─────────────────────────────────────
   useEffect(() => {
@@ -242,24 +257,39 @@ export function LiveEvent() {
     if (isMountedRef.current) setIsSubmitting(true);
     isSubmittingRef.current = true;
 
-    const payload = JSON.parse(localStorage.getItem(`event_${id}_answers`) || '{}');
+    const payload = JSON.parse(localStorage.getItem(ANSWERS_KEY) || '{}');
     const finalScore = calculateScore(payload);
 
-    // C: Use .neq('status','submitted') so DB only accepts the first write.
-    // If another tab already submitted, this update matches 0 rows (idempotent).
-    const { error, data: updated } = await supabase.from('participation')
-      .update({ answers: payload, score: finalScore, status: 'submitted' })
-      .eq('id', pid)
-      .neq('status', 'submitted')   // ← server-side idempotency guard
-      .select('id');
+    if (!navigator.onLine) {
+      localStorage.setItem(PENDING_SUBMIT_KEY, JSON.stringify({ answers: payload, score: finalScore }));
+      persistPendingSync(payload);
+      if (isMountedRef.current) {
+        setSubmitQueued(true);
+        setIsSubmitting(false);
+      }
+      isSubmittingRef.current = false;
+      return;
+    }
 
-    if (error) {
-      console.error('❌ SUBMIT_ERROR', error);
-      // Retry once on network error (but not if already submitted)
-      await supabase.from('participation')
+    try {
+      // C: Use .neq('status','submitted') so DB only accepts the first write.
+      // If another tab already submitted, this update matches 0 rows (idempotent).
+      const { error } = await supabase.from('participation')
         .update({ answers: payload, score: finalScore, status: 'submitted' })
         .eq('id', pid)
         .neq('status', 'submitted');
+
+      if (error) throw error;
+    } catch (e) {
+      console.error('❌ SUBMIT_ERROR', e);
+      localStorage.setItem(PENDING_SUBMIT_KEY, JSON.stringify({ answers: payload, score: finalScore }));
+      persistPendingSync(payload);
+      if (isMountedRef.current) {
+        setSubmitQueued(true);
+        setIsSubmitting(false);
+      }
+      isSubmittingRef.current = false;
+      return;
     }
 
     // Whether we wrote or another tab already did, navigate to results
@@ -267,7 +297,7 @@ export function LiveEvent() {
     cleanupEventKeys();
     if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
     navigate(`/results/${id}`);
-  }, [id, calculateScore, navigate, cleanupEventKeys]);
+  }, [ANSWERS_KEY, PENDING_SUBMIT_KEY, calculateScore, navigate, cleanupEventKeys, persistPendingSync]);
 
   // ── FIX #3: forceCheatSubmission reads from ref ──────────────
   const forceCheatSubmission = useCallback(async () => {
@@ -276,7 +306,7 @@ export function LiveEvent() {
     isSubmittingRef.current = true;
     if (isMountedRef.current) setIsSubmitting(true);
 
-    const payload = JSON.parse(localStorage.getItem(`event_${id}_answers`) || '{}');
+    const payload = JSON.parse(localStorage.getItem(ANSWERS_KEY) || '{}');
     const finalScore = calculateScore(payload);
 
     await supabase.from('participation').update({
@@ -290,7 +320,7 @@ export function LiveEvent() {
     // Fix #8: also clean up on forced cheat submission
     cleanupEventKeys();
     if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
-  }, [id, calculateScore, cleanupEventKeys]);
+  }, [ANSWERS_KEY, calculateScore, cleanupEventKeys]);
 
   // ── FIX #4: Anti-cheat uses ref for violations ───────────────
   useEffect(() => {
@@ -340,45 +370,108 @@ export function LiveEvent() {
   }, [hasStarted, isSubmitting, forceCheatSubmission]);
 
   // ── 3. Offline-first Sync Mechanism ─────────────────────────
+  const flushPendingSubmission = useCallback(async () => {
+    if (isSubmittingRef.current || !navigator.onLine) return;
+    const raw = localStorage.getItem(PENDING_SUBMIT_KEY);
+    if (!raw) return;
+    const pid = participationIdRef.current;
+    if (!pid) return;
+
+    isSubmittingRef.current = true;
+    if (isMountedRef.current) setIsSubmitting(true);
+
+    try {
+      const parsed = JSON.parse(raw);
+      const payload = parsed?.answers || {};
+      const score = Number(parsed?.score || 0);
+
+      const { error } = await supabase
+        .from('participation')
+        .update({ answers: payload, score, status: 'submitted' })
+        .eq('id', pid)
+        .neq('status', 'submitted');
+
+      if (error) throw error;
+
+      localStorage.removeItem(PENDING_SUBMIT_KEY);
+      if (isMountedRef.current) setSubmitQueued(false);
+      cleanupEventKeys();
+      if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
+      navigate(`/results/${id}`);
+    } catch (e) {
+      console.error('❌ PENDING_SUBMIT_FLUSH_FAILED', e);
+      if (isMountedRef.current) setIsSubmitting(false);
+      isSubmittingRef.current = false;
+    }
+  }, [PENDING_SUBMIT_KEY, cleanupEventKeys, id, navigate]);
+
   const triggerSyncWorker = useCallback(async () => {
-    if (syncWorkerRunning.current || syncQueueRef.current.length === 0) return;
+    if (syncWorkerRunning.current || !navigator.onLine) return;
+    const pendingRaw = localStorage.getItem(PENDING_SYNC_KEY);
+    if (!pendingRaw) {
+      await flushPendingSubmission();
+      return;
+    }
+
     syncWorkerRunning.current = true;
 
-    while (syncQueueRef.current.length > 0) {
-      const payload = syncQueueRef.current[syncQueueRef.current.length - 1];
-      syncQueueRef.current = [];
-      const pid = participationIdRef.current;
-      if (!pid) {
-        await new Promise(r => setTimeout(r, 1000));
-        if (participationIdRef.current) {
-          syncQueueRef.current.push(payload);
-        }
-        break;
-      }
+    const pid = participationIdRef.current;
+    if (!pid) {
+      syncWorkerRunning.current = false;
+      return;
+    }
+
+    try {
+      const payload = JSON.parse(pendingRaw);
       let retries = 3;
       while (retries > 0) {
         try {
           const { error } = await supabase.from('participation').update({ answers: payload }).eq('id', pid);
           if (error) throw error;
+          clearPendingSync();
           break;
-        } catch (e) {
+        } catch {
           retries--;
-          await new Promise(r => setTimeout(r, 2000));
+          if (retries > 0) await new Promise((r) => setTimeout(r, 1500));
         }
       }
+
+      await flushPendingSubmission();
+    } catch (e) {
+      console.error('❌ SYNC_WORKER_ERROR', e);
     }
+
     syncWorkerRunning.current = false;
-  }, []);
+  }, [PENDING_SYNC_KEY, clearPendingSync, flushPendingSubmission]);
 
   const answerQuestion = useCallback((questionId, option) => {
     setAnswers(prev => {
       const next = { ...prev, [questionId]: option };
-      localStorage.setItem(`event_${id}_answers`, JSON.stringify(next));
-      syncQueueRef.current.push(next);
+      localStorage.setItem(ANSWERS_KEY, JSON.stringify(next));
+      persistPendingSync(next);
       triggerSyncWorker();
       return next;
     });
-  }, [id, triggerSyncWorker]);
+  }, [ANSWERS_KEY, persistPendingSync, triggerSyncWorker]);
+
+  useEffect(() => {
+    const hasPending = !!localStorage.getItem(PENDING_SYNC_KEY);
+    const hasQueuedSubmit = !!localStorage.getItem(PENDING_SUBMIT_KEY);
+    if (hasPending && isMountedRef.current) setHasPendingSync(true);
+    if (hasQueuedSubmit && isMountedRef.current) setSubmitQueued(true);
+    if (hasPending || hasQueuedSubmit) {
+      triggerSyncWorker();
+    }
+  }, [PENDING_SUBMIT_KEY, PENDING_SYNC_KEY, triggerSyncWorker]);
+
+  useEffect(() => {
+    const handleOnline = () => {
+      triggerSyncWorker();
+    };
+
+    window.addEventListener('online', handleOnline);
+    return () => window.removeEventListener('online', handleOnline);
+  }, [triggerSyncWorker]);
 
   // ── Admin Interrupt Subscription ─────────────────────────────
   // ── H: Track realtime status + Fix #3: re-sync on reconnect ──
@@ -632,8 +725,15 @@ export function LiveEvent() {
           </div>
         )}
 
+        {(hasPendingSync || submitQueued) && (
+          <div style={{ position: 'fixed', top: realtimeStatus === 'reconnecting' ? 34 : 0, left: 0, right: 0, zIndex: 98, background: 'rgba(37,99,235,0.92)', color: '#fff', textAlign: 'center', padding: '8px 16px', fontWeight: 700, fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+            <Wifi size={14} />
+            {submitQueued ? 'Final submission queued. Will auto-submit when online.' : 'Unsynced answers detected. Auto-sync on reconnect.'}
+          </div>
+        )}
+
         {/* Top HUD Bar */}
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, background: 'var(--surface)', borderBottom: '1px solid var(--border)', zIndex: 50, padding: '8px 16px', height: 48, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+        <div style={{ position: 'fixed', top: (hasPendingSync || submitQueued) ? (realtimeStatus === 'reconnecting' ? 68 : 34) : (realtimeStatus === 'reconnecting' ? 34 : 0), left: 0, right: 0, background: 'var(--surface)', borderBottom: '1px solid var(--border)', zIndex: 50, padding: '8px 16px', height: 48, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
             <div className="live-dot" />
             <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{eventData.title}</p>
@@ -659,7 +759,7 @@ export function LiveEvent() {
         </div>
 
         {/* Main Content */}
-        <div style={{ paddingTop: 48, display: 'grid', gridTemplateColumns: '1fr', minHeight: '100dvh' }} id="live-event-grid">
+        <div style={{ paddingTop: (hasPendingSync || submitQueued) ? (realtimeStatus === 'reconnecting' ? 116 : 82) : (realtimeStatus === 'reconnecting' ? 82 : 48), display: 'grid', gridTemplateColumns: '1fr', minHeight: '100dvh' }} id="live-event-grid">
           <style>{`@media (min-width: 1280px) { #live-event-grid { grid-template-columns: 1fr 340px; } }`}</style>
 
           {/* Quiz Area */}
