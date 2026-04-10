@@ -123,6 +123,7 @@ export function Sidebar() {
 
   const isAdmin = user?.role === 'admin';
   const isLiveActive = !!liveEventRuntime?.eventId;
+  const isAdminRoute = location.pathname.startsWith('/admin');
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -479,6 +480,7 @@ export function Sidebar() {
       )}
 
       {/* ── MOBILE BOTTOM NAV (≤767px) ────── */}
+      {!isAdminRoute && (
       <nav className="bottom-nav" aria-label="Mobile navigation">
         {mobileTabItems.map((item) => {
           if (item.path === null) {
@@ -510,6 +512,7 @@ export function Sidebar() {
           );
         })}
       </nav>
+      )}
     </>
   );
 }

@@ -317,7 +317,43 @@ export function AdminEvents() {
   );
 
   return (
-    <div className="p-6 md:p-10 max-w-7xl mx-auto space-y-10 pb-20">
+    <div className="admin-events-page p-6 md:p-10 max-w-7xl mx-auto space-y-10 pb-20">
+
+      <style>{`
+        @media (max-width: 767px) {
+          .admin-events-page {
+            padding-left: 12px;
+            padding-right: 12px;
+            padding-bottom: max(96px, env(safe-area-inset-bottom));
+          }
+
+          .admin-events-form {
+            padding: 16px !important;
+          }
+
+          .admin-events-form-grid {
+            grid-template-columns: 1fr !important;
+            gap: 14px !important;
+          }
+
+          .admin-events-form-grid .span-2-mobile {
+            grid-column: span 1 !important;
+          }
+
+          .admin-events-form-actions {
+            grid-column: span 1 !important;
+            flex-direction: column-reverse !important;
+            gap: 10px !important;
+            padding-top: 16px !important;
+          }
+
+          .admin-events-form-actions button {
+            width: 100%;
+            justify-content: center;
+            min-height: 46px;
+          }
+        }
+      `}</style>
 
       {/* Feature 10: Confirmation Modal */}
       {confirmModal && (
@@ -415,6 +451,7 @@ export function AdminEvents() {
       {showForm && (
         <form
           onSubmit={editingEvent ? handleUpdate : handleCreate}
+          className="admin-events-form"
           style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderLeft: '4px solid var(--blue)', borderRadius: 12, padding: 32 }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 32 }}>
@@ -426,8 +463,8 @@ export function AdminEvents() {
             </button>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 24 }}>
-            <div style={{ gridColumn: 'span 2' }}>
+          <div className="admin-events-form-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 24 }}>
+            <div className="span-2-mobile" style={{ gridColumn: 'span 2' }}>
               <Label>Event Identity</Label>
               <input required type="text"
                 placeholder="e.g. National Hackathon 2026"
@@ -436,7 +473,7 @@ export function AdminEvents() {
                 onChange={e => setFormData({...formData, title: e.target.value})} />
             </div>
 
-            <div style={{ gridColumn: 'span 2' }}>
+            <div className="span-2-mobile" style={{ gridColumn: 'span 2' }}>
               <Label>Description / Rules</Label>
               <textarea rows={3}
                 style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: '12px 16px', color: 'var(--text-primary)', fontSize: 14, resize: 'none' }}
@@ -500,7 +537,7 @@ export function AdminEvents() {
                 onChange={e => setFormData({...formData, end_at: e.target.value})} />
             </div>
 
-            <div style={{ gridColumn: 'span 2' }}>
+            <div className="span-2-mobile" style={{ gridColumn: 'span 2' }}>
               <Label>Sponsor Signature (Logo URL)</Label>
               <input type="url" style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: '12px 16px', color: 'var(--text-primary)', fontSize: 13 }}
                 placeholder="https://signature.cdn.com/asset.png"
@@ -508,7 +545,7 @@ export function AdminEvents() {
                 onChange={e => setFormData({...formData, sponsor_logo_url: e.target.value})} />
             </div>
 
-            <div style={{ gridColumn: 'span 2', display: 'flex', justifyContent: 'flex-end', gap: 16, borderTop: '1px solid var(--border)', paddingTop: 24, marginTop: 8 }}>
+            <div className="admin-events-form-actions" style={{ gridColumn: 'span 2', display: 'flex', justifyContent: 'flex-end', gap: 16, borderTop: '1px solid var(--border)', paddingTop: 24, marginTop: 8 }}>
               <button type="button" onClick={cancelForm} className="btn-ghost" style={{ padding: '10px 24px' }}>Discard</button>
               <button type="submit" className="btn-primary" style={{ padding: '10px 32px', background: 'var(--green)', color: '#000' }}>
                 {editingEvent ? 'Commit Changes' : 'Initialize Infrastructure'}
