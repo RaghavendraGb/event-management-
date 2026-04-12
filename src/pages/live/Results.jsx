@@ -8,6 +8,8 @@ import { Award, Share2, CheckCircle2, XCircle, Trophy, Clock, Users } from 'luci
 // FIX #15: ref to track confetti interval for cleanup
 // FIX #16: ref to track AudioContext for cleanup
 
+const MotionDiv = motion.div;
+
 export function Results() {
   const { id } = useParams();
   const user = useStore((state) => state.user);
@@ -17,15 +19,23 @@ export function Results() {
   const [podium, setPodium] = useState([]);
   const [personalScore, setPersonalScore] = useState(null);
   const [mySubmittedScore, setMySubmittedScore] = useState(null); // shown on waiting screen
+  const [waitingFactIndex, setWaitingFactIndex] = useState(0);
   const [questions, setQuestions] = useState([]);
   // Feature 8: team leaderboard
   const [teamPodium, setTeamPodium] = useState([]);
+
+  const waitingFacts = [
+    'Did you know? Light travels faster than sound.',
+    'Fun fact: The first computer was built in 1945.',
+    'Quiz strategy: review beats rushing in competitive rounds.',
+  ];
   
   // Ceremony States
   // phases: 'loading' | 'waiting' | 'calculating' | 'drumroll' | 'podium-3' | 'podium-2' | 'podium-1' | 'complete'
   const [phase, setPhase] = useState('loading');
   const [fetchError, setFetchError] = useState(null);
   const waitingChannelRef = useRef(null); // realtime channel while waiting for event to end
+  const eventVersionRef = useRef(0);
 
   // FIX #15: store confetti interval ref so we can clean up on unmount
   const confettiIntervalRef = useRef(null);
@@ -42,6 +52,14 @@ export function Results() {
   }, []);
 
   useEffect(() => {
+    if (phase !== 'waiting') return;
+    const rotate = setInterval(() => {
+      setWaitingFactIndex((prev) => (prev + 1) % waitingFacts.length);
+    }, 4500);
+    return () => clearInterval(rotate);
+  }, [phase, waitingFacts.length]);
+
+  useEffect(() => {
     async function fetchResults() {
       if (!user) return;
       try {
@@ -49,53 +67,7 @@ export function Results() {
         const { data: eData, error: eErr } = await supabase.from('events').select('*').eq('id', id).single();
         if (eErr) throw new Error(eErr.message);
         setEventData(eData);
-
-        let leaderData = [];
-        if (eData.type === 'quiz' && eData.quiz_mode === 'competitive') {
-          const { data: competitiveRows, error: competitiveErr } = await supabase
-            .from('competitive_quiz_player_state')
-            .select('user_id, total_score, users(name, avatar_url, college)')
-            .eq('event_id', id)
-            .neq('status', 'disqualified')
-            .order('total_score', { ascending: false });
-          if (competitiveErr) throw new Error(competitiveErr.message);
-
-          leaderData = (competitiveRows || []).map((row) => ({
-            user_id: row.user_id,
-            score: Number(row.total_score || 0),
-            team_id: null,
-            teams: null,
-            users: row.users,
-          }));
-        } else {
-          const { data: participationRows, error: lErr } = await supabase
-            .from('participation')
-            .select('user_id, score, team_id, teams(name), users(name, avatar_url, college)')
-            .eq('event_id', id)
-            .order('score', { ascending: false });
-          if (lErr) throw new Error(lErr.message);
-          leaderData = participationRows || [];
-        }
-
-        if (leaderData) {
-          setPodium(leaderData.slice(0, 3));
-          const myRankIndex = leaderData.findIndex(p => p.user_id === user.id);
-          if (myRankIndex !== -1) {
-            setPersonalScore({ rank: myRankIndex + 1, data: leaderData[myRankIndex] });
-          }
-
-          // Feature 8: Aggregate team scores
-          const teamMap = {};
-          leaderData.forEach(p => {
-            if (!p.team_id) return;
-            if (!teamMap[p.team_id]) {
-              teamMap[p.team_id] = { teamName: p.teams?.name || 'Unknown Team', score: 0 };
-            }
-            teamMap[p.team_id].score += p.score || 0;
-          });
-          const sortedTeams = Object.values(teamMap).sort((a, b) => b.score - a.score);
-          if (sortedTeams.length > 0) setTeamPodium(sortedTeams.slice(0, 3));
-        }
+        eventVersionRef.current = Number(eData.state_version || 0);
 
         // Fetch my personal submitted score (shown on waiting screen too)
         let pData = null;
@@ -134,6 +106,9 @@ export function Results() {
             .on('postgres_changes', {
               event: 'UPDATE', schema: 'public', table: 'events', filter: `id=eq.${id}`
             }, (payload) => {
+              const incomingVersion = Number(payload?.new?.state_version || 0);
+              if (incomingVersion < eventVersionRef.current) return;
+              eventVersionRef.current = incomingVersion;
               const ready = payload.new.status === 'ended' || payload.new.results_announced === true;
               if (ready) {
                 supabase.removeChannel(ch);
@@ -147,6 +122,52 @@ export function Results() {
 
           // Don't proceed to ceremony yet — stop here
           return;
+        }
+
+        let leaderData = [];
+        if (eData.type === 'quiz' && eData.quiz_mode === 'competitive') {
+          const { data: competitiveRows, error: competitiveErr } = await supabase
+            .from('competitive_quiz_player_state')
+            .select('user_id, total_score, users(name, avatar_url, college)')
+            .eq('event_id', id)
+            .neq('status', 'disqualified')
+            .order('total_score', { ascending: false });
+          if (competitiveErr) throw new Error(competitiveErr.message);
+
+          leaderData = (competitiveRows || []).map((row) => ({
+            user_id: row.user_id,
+            score: Number(row.total_score || 0),
+            team_id: null,
+            teams: null,
+            users: row.users,
+          }));
+        } else {
+          const { data: participationRows, error: lErr } = await supabase
+            .from('participation')
+            .select('user_id, score, team_id, teams(name), users(name, avatar_url, college)')
+            .eq('event_id', id)
+            .order('score', { ascending: false });
+          if (lErr) throw new Error(lErr.message);
+          leaderData = participationRows || [];
+        }
+
+        if (leaderData) {
+          setPodium(leaderData.slice(0, 3));
+          const myRankIndex = leaderData.findIndex(p => p.user_id === user.id);
+          if (myRankIndex !== -1) {
+            setPersonalScore({ rank: myRankIndex + 1, data: leaderData[myRankIndex] });
+          }
+
+          const teamMap = {};
+          leaderData.forEach(p => {
+            if (!p.team_id) return;
+            if (!teamMap[p.team_id]) {
+              teamMap[p.team_id] = { teamName: p.teams?.name || 'Unknown Team', score: 0 };
+            }
+            teamMap[p.team_id].score += p.score || 0;
+          });
+          const sortedTeams = Object.values(teamMap).sort((a, b) => b.score - a.score);
+          if (sortedTeams.length > 0) setTeamPodium(sortedTeams.slice(0, 3));
         }
 
         // ─── Event already ended when navigating here ─────────────────────
@@ -266,7 +287,7 @@ export function Results() {
       const t = setTimeout(() => setPhase('complete'), 5000);
       return () => clearTimeout(t);
     }
-  }, [phase, eventData?.type, id, questions.length, user?.id]);
+  }, [phase, eventData?.type, eventData?.quiz_mode, id, questions.length, user?.id]);
 
   const playDrumRoll = () => {
     try {
@@ -315,7 +336,7 @@ export function Results() {
 
   const triggerConfetti = () => {
     const duration = 5 * 1000;
-    const animationEnd = Date.now() + duration;
+    const animationEnd = performance.now() + duration;
     const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 100 };
 
     function randomInRange(min, max) {
@@ -324,7 +345,7 @@ export function Results() {
 
     // FIX #15: store interval in ref so unmount cleanup can clear it
     confettiIntervalRef.current = setInterval(function() {
-      const timeLeft = animationEnd - Date.now();
+      const timeLeft = animationEnd - performance.now();
       if (timeLeft <= 0) {
         clearInterval(confettiIntervalRef.current);
         confettiIntervalRef.current = null;
@@ -342,7 +363,7 @@ export function Results() {
   {/* ── WAITING SCREEN: user submitted but event still live ── */}
   if (phase === 'waiting') return (
     <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '2rem 1rem', textAlign: 'center', userSelect: 'none' }}>
-      <div style={{ maxWidth: 400, width: '100%', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '32px 28px' }}>
+      <div style={{ maxWidth: 420, width: '100%', background: 'rgba(255,255,255,0.05)', backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 16, padding: '32px 28px', boxShadow: '0 20px 45px rgba(0,0,0,0.28)' }}>
         {/* Spinner */}
         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 24 }}>
           <div style={{ position: 'relative', width: 56, height: 56 }}>
@@ -374,6 +395,15 @@ export function Results() {
           <span className="live-dot" />
           <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Waiting for other participants...</span>
         </div>
+        <MotionDiv
+          key={waitingFactIndex}
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.25 }}
+          style={{ marginTop: 10, fontSize: 11, color: 'var(--text-muted)' }}
+        >
+          {waitingFacts[waitingFactIndex]}
+        </MotionDiv>
         <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 12, fontStyle: 'italic' }}>
           Page auto-updates when event ends. Do not close this tab.
         </p>
@@ -512,7 +542,7 @@ export function Results() {
       {phase === 'complete' && teamPodium.length > 0 && (
         <div className="w-full max-w-5xl mx-auto px-4 pb-16">
           <h2 className="text-3xl font-black uppercase tracking-widest text-center text-slate-300 mb-12">Team Standings</h2>
-          <div className="flex flex-col md:flex-row items-end justify-center gap-4 md:gap-8 min-h-[280px]">
+          <div className="flex flex-col md:flex-row items-end justify-center gap-4 md:gap-8 min-h-70">
 
             {/* 3rd place team */}
             {teamPodium[2] && (
@@ -527,7 +557,7 @@ export function Results() {
                   <p className="font-bold text-white text-sm truncate w-full">{teamPodium[2].teamName}</p>
                   <p className="text-xs text-orange-400 font-bold mt-1">{teamPodium[2].score} PTS</p>
                 </div>
-                <div className="w-28 h-28 bg-gradient-to-t from-orange-900 to-orange-800/40 border-t-4 border-orange-500 flex justify-center pt-3 rounded-t-lg">
+                <div className="w-28 h-28 bg-linear-to-t from-orange-900 to-orange-800/40 border-t-4 border-orange-500 flex justify-center pt-3 rounded-t-lg">
                   <span className="text-3xl font-black text-orange-500">3rd</span>
                 </div>
               </motion.div>
@@ -546,7 +576,7 @@ export function Results() {
                   <p className="font-black text-white text-base truncate w-full">{teamPodium[0].teamName}</p>
                   <p className="text-sm text-yellow-400 font-black mt-1">{teamPodium[0].score} PTS</p>
                 </div>
-                <div className="w-36 h-44 bg-gradient-to-t from-yellow-900 to-yellow-600/40 border-t-4 border-yellow-400 flex justify-center pt-4 shadow-[0_0_60px_rgba(234,179,8,0.25)] rounded-t-lg">
+                <div className="w-36 h-44 bg-linear-to-t from-yellow-900 to-yellow-600/40 border-t-4 border-yellow-400 flex justify-center pt-4 shadow-[0_0_60px_rgba(234,179,8,0.25)] rounded-t-lg">
                   <span className="text-5xl font-black text-yellow-400">1st</span>
                 </div>
               </motion.div>
@@ -565,7 +595,7 @@ export function Results() {
                   <p className="font-bold text-white text-sm truncate w-full">{teamPodium[1].teamName}</p>
                   <p className="text-xs text-slate-300 font-bold mt-1">{teamPodium[1].score} PTS</p>
                 </div>
-                <div className="w-32 h-36 bg-gradient-to-t from-slate-900 to-slate-700/40 border-t-4 border-slate-400 flex justify-center pt-3 rounded-t-lg">
+                <div className="w-32 h-36 bg-linear-to-t from-slate-900 to-slate-700/40 border-t-4 border-slate-400 flex justify-center pt-3 rounded-t-lg">
                   <span className="text-4xl font-black text-slate-400">2nd</span>
                 </div>
               </motion.div>

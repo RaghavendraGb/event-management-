@@ -1,5 +1,6 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useStore } from '../../store';
+import { serverNow } from '../../lib/supabase';
 
 /**
  * LiveBanner — Feature 1
@@ -20,12 +21,16 @@ export function LiveBanner() {
   const hiddenPaths = ['/live/', '/admin', '/login', '/signup'];
   if (hiddenPaths.some((p) => location.pathname.startsWith(p))) return null;
 
-  const { eventId, eventTitle, currentQuestionIndex, totalQuestions, timeLeftStr } = runtime;
+  const { eventId, eventTitle, status, currentQuestionIndex, totalQuestions, questionEndAt, timeLeftStr } = runtime;
+  const remainingMs = questionEndAt ? Math.max(0, new Date(questionEndAt).getTime() - serverNow()) : null;
+  const remainingStr = remainingMs !== null
+    ? `${Math.max(0, Math.floor(remainingMs / 1000))}s`
+    : timeLeftStr;
 
   return (
     <div
       onClick={() => navigate(`/live/${eventId}`)}
-      className="live-banner"
+      className="live-banner live-banner--fixed"
       role="button"
       aria-label={`Join live event: ${eventTitle}`}
     >
@@ -37,7 +42,7 @@ export function LiveBanner() {
 
       {/* Event title */}
       <span className="live-banner-title">
-        LIVE: {eventTitle || 'Event in Progress'}
+        {String(status || 'live').toUpperCase()}: {eventTitle || 'Event in Progress'}
       </span>
 
       {/* Q progress */}
@@ -50,7 +55,7 @@ export function LiveBanner() {
       {/* Time left */}
       {timeLeftStr && (
         <span className="live-banner-time">
-          ⏱ {timeLeftStr}
+          ⏱ {remainingStr || timeLeftStr}
         </span>
       )}
 

@@ -11,9 +11,11 @@ export default function YouAndMeAnswering({
   const [submitted, setSubmitted] = useState(false)
   const [feedback, setFeedback] = useState('')
   const timeoutHandledRef = useRef(false)
+  const submitLockedRef = useRef(false)
 
   const handleSubmitAnswer = useCallback((optionIndex) => {
-    if (submitted) return
+    if (submitted || submitLockedRef.current) return
+    submitLockedRef.current = true
 
     const isCorrect =
       currentQuestion.options[optionIndex].is_correct === true
@@ -23,11 +25,13 @@ export default function YouAndMeAnswering({
     setFeedback(isCorrect ? '✓ Correct!' : '✗ Incorrect')
 
     const timeTaken = (30 - timeRemaining) * 1000
-    onSubmitAnswer(
+    Promise.resolve(onSubmitAnswer(
       currentQuestion.options[optionIndex].text,
       isCorrect,
       timeTaken
-    )
+    )).finally(() => {
+      submitLockedRef.current = false
+    })
 
     timeoutHandledRef.current = true
   }, [submitted, currentQuestion, timeRemaining, onSubmitAnswer])

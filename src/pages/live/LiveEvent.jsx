@@ -73,11 +73,13 @@ export function LiveEvent() {
   const [hasPendingSync, setHasPendingSync] = useState(false);
   const [submitQueued, setSubmitQueued] = useState(false);
   const [treasureGlobalEnded, setTreasureGlobalEnded] = useState(false);
+  const [sessionGuardEnabled, setSessionGuardEnabled] = useState(true);
 
   // ── H: Realtime connection status for network-aware UI ────────
   const [realtimeStatus, setRealtimeStatus] = useState('connected');
   // Fix #3: track whether we were previously CHANNEL_ERROR so we re-sync on reconnect
   const wasDisconnectedRef = useRef(false);
+  const eventVersionRef = useRef(0);
 
   // Fix #6: retry cooldown to prevent spam-clicking the Retry button
   const [retrying, setRetrying] = useState(false);
@@ -85,6 +87,15 @@ export function LiveEvent() {
   const ANSWERS_KEY = `event_${id}_answers`;
   const PENDING_SYNC_KEY = `event_${id}_pending_sync`;
   const PENDING_SUBMIT_KEY = `event_${id}_pending_submit`;
+  const SESSION_KEY = `event_${id}_session_token`;
+
+  const liveSessionTokenRef = useRef(
+    sessionStorage.getItem(SESSION_KEY) ||
+    (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${performance.now().toString(36)}-${Math.random().toString(36).slice(2)}`)
+  );
+  useEffect(() => {
+    sessionStorage.setItem(SESSION_KEY, liveSessionTokenRef.current);
+  }, [SESSION_KEY]);
 
   // Fix #8: helper to purge all localStorage keys belonging to this event
   const cleanupEventKeys = useCallback(() => {
@@ -134,6 +145,12 @@ export function LiveEvent() {
     if (isMountedRef.current) setHasPendingSync(false);
   }, [PENDING_SYNC_KEY]);
 
+  const handleSessionLoss = useCallback((message) => {
+    if (!isMountedRef.current) return;
+    setError(message || 'This live session is active in another tab.');
+    navigate(`/events/${id}`);
+  }, [id, navigate]);
+
   // ── 1. Core Boot Sequence ─────────────────────────────────────
   useEffect(() => {
     async function bootEngine() {
@@ -149,6 +166,7 @@ export function LiveEvent() {
         if (eData.results_announced === true && eData.type !== 'treasure_hunt') return navigate(`/results/${id}`);
         // Redirect coding events to their dedicated coding arena
         if (eData.type === 'coding_challenge') return navigate(`/live-coding/${id}`);
+        eventVersionRef.current = Number(eData.state_version || 0);
         if (isMountedRef.current) setEventData(eData);
 
         // ── A: Populate single source of truth in global store ──
@@ -159,6 +177,7 @@ export function LiveEvent() {
           status: eData.status,
           startTime: eData.start_at ? new Date(eData.start_at).getTime() : null,
           endTime: eData.end_at ? new Date(eData.end_at).getTime() : null,
+          questionEndAt: eData.question_end_at || eData.end_at || null,
           currentQuestionIndex: 0,
           totalQuestions: 0,
           timeLeftStr: '',
@@ -187,18 +206,34 @@ export function LiveEvent() {
         // Patch totalQuestions now that we have the count
         patchLiveEventRuntime({ totalQuestions: qData.length });
 
-        const { data: pData, error: pErr } = await supabase
+        const { data: participationRows, error: pErr } = await supabase
           .from('participation')
           .select('id, answers, status, violations')
           .eq('event_id', id)
           .eq('user_id', user.id)
-          .single();
+          .limit(1);
+
+        const pData = Array.isArray(participationRows) ? participationRows[0] : null;
 
         if (pErr || !pData) {
           console.error('❌ PARTICIPATION_ERROR', pErr);
           return navigate(`/events/${id}`);
         }
         if (pData.status === 'submitted' && eData.type !== 'treasure_hunt') return navigate(`/results/${id}`);
+
+        const { data: lockData, error: lockErr } = await supabase.rpc('claim_participation_session', {
+          p_event_id: id,
+          p_user_id: user.id,
+          p_session_id: liveSessionTokenRef.current,
+        });
+        if (lockErr) {
+          // If lock RPC is unavailable in DB, allow exam entry without tab-lock enforcement.
+          console.warn('SESSION_LOCK_RPC_UNAVAILABLE', lockErr.message);
+          if (isMountedRef.current) setSessionGuardEnabled(false);
+        } else if (!lockData?.[0]?.claimed) {
+          handleSessionLoss('This event is already open in another tab.');
+          return;
+        }
 
         participationIdRef.current = pData.id;
         if (isMountedRef.current) {
@@ -227,7 +262,7 @@ export function LiveEvent() {
       }
     }
     bootEngine();
-  }, [id, user, navigate, setLiveEventRuntime, patchLiveEventRuntime, preloadedQuestions, clearPreloadedQuestions]);
+  }, [id, user, navigate, setLiveEventRuntime, patchLiveEventRuntime, preloadedQuestions, clearPreloadedQuestions, handleSessionLoss]);
 
   // ── 2. Anti-Cheat & Fullscreen Bootstrap ────────────────────
   const startChallenge = async () => {
@@ -280,12 +315,21 @@ export function LiveEvent() {
     try {
       // C: Use .neq('status','submitted') so DB only accepts the first write.
       // If another tab already submitted, this update matches 0 rows (idempotent).
-      const { error } = await supabase.from('participation')
+      let submitQuery = supabase.from('participation')
         .update({ answers: payload, score: finalScore, status: 'submitted' })
         .eq('id', pid)
         .neq('status', 'submitted');
 
+      if (sessionGuardEnabled) {
+        submitQuery = submitQuery.eq('active_session_id', liveSessionTokenRef.current);
+      }
+
+      const { data: updatedRows, error } = await submitQuery.select('id');
+
       if (error) throw error;
+      if (!updatedRows || updatedRows.length === 0) {
+        throw new Error('This tab no longer owns the active session.');
+      }
     } catch (e) {
       console.error('❌ SUBMIT_ERROR', e);
       localStorage.setItem(PENDING_SUBMIT_KEY, JSON.stringify({ answers: payload, score: finalScore }));
@@ -303,7 +347,7 @@ export function LiveEvent() {
     cleanupEventKeys();
     if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
     navigate(`/results/${id}`);
-  }, [ANSWERS_KEY, PENDING_SUBMIT_KEY, calculateScore, id, navigate, cleanupEventKeys, persistPendingSync]);
+  }, [ANSWERS_KEY, PENDING_SUBMIT_KEY, calculateScore, id, navigate, cleanupEventKeys, persistPendingSync, sessionGuardEnabled]);
 
   // ── FIX #3: forceCheatSubmission reads from ref ──────────────
   const forceCheatSubmission = useCallback(async () => {
@@ -492,6 +536,15 @@ export function LiveEvent() {
       .on('postgres_changes', {
         event: 'UPDATE', schema: 'public', table: 'events', filter: `id=eq.${id}`
       }, (payload) => {
+        const incomingVersion = Number(payload?.new?.state_version || 0);
+        if (incomingVersion < eventVersionRef.current) return;
+        eventVersionRef.current = incomingVersion;
+        if (isMountedRef.current) setEventData((prev) => ({ ...(prev || {}), ...payload.new }));
+        patchLiveEventRuntime({
+          status: payload.new.status,
+          questionEndAt: payload.new.question_end_at || payload.new.end_at || null,
+          currentQuestionIndex: Number(payload.new.current_question_index || 0),
+        });
         if (payload.new.status === 'ended') {
           if (eventData?.type === 'treasure_hunt') {
             if (isMountedRef.current) setTreasureGlobalEnded(true);
@@ -531,7 +584,7 @@ export function LiveEvent() {
       });
 
     return () => supabase.removeChannel(endChannel);
-  }, [eventData, hasStarted, id, forceCheatSubmission, navigate]);
+  }, [eventData, hasStarted, id, forceCheatSubmission, navigate, patchLiveEventRuntime]);
 
   // ── 4. Server-Side Global Timer ─────────────────────────────
   useEffect(() => {
@@ -576,6 +629,31 @@ export function LiveEvent() {
     return () => clearInterval(interval);
   }, [eventData, hasStarted, submitEvent, patchLiveEventRuntime]);
 
+  useEffect(() => {
+    if (!participationId || !user?.id || !hasStarted || !sessionGuardEnabled) return;
+
+    let alive = true;
+    const beat = async () => {
+      if (!alive) return;
+      const { data } = await supabase.rpc('heartbeat_participation_session', {
+        p_event_id: id,
+        p_user_id: user.id,
+        p_session_id: liveSessionTokenRef.current,
+      });
+      if (!data) handleSessionLoss('Your live session was replaced by another tab.');
+    };
+
+    beat().catch(() => {});
+    const interval = setInterval(() => {
+      beat().catch(() => {});
+    }, 15000);
+
+    return () => {
+      alive = false;
+      clearInterval(interval);
+    };
+  }, [participationId, user?.id, hasStarted, id, handleSessionLoss, sessionGuardEnabled]);
+
   // ── Feature 4: Soft lock — beforeunload when event is active ──
   useEffect(() => {
     if (!hasStarted || isSubmitting) return;
@@ -584,12 +662,14 @@ export function LiveEvent() {
     if (eventData?.type === 'youandme') return;
     if (eventData?.type === 'rapid_fire' && eventData?.rapid_fire_style === 'knockout_tournament') return;
 
-    const handleBeforeUnload = (e) => {
+    window.onbeforeunload = (e) => {
       e.preventDefault();
-      e.returnValue = '';
+      e.returnValue = 'Leaving will affect your progress';
+      return e.returnValue;
     };
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.onbeforeunload = null;
+    };
   }, [hasStarted, isSubmitting, eventData?.type, eventData?.quiz_mode, eventData?.rapid_fire_style]);
 
   // Feature 1: stable callback for NormalQuizMode to report current question index
@@ -601,6 +681,16 @@ export function LiveEvent() {
     },
     [patchLiveEventRuntime]
   );
+
+  const handleCompetitiveRuntime = useCallback((runtime) => {
+    patchLiveEventRuntime({
+      status: runtime?.status,
+      totalQuestions: runtime?.totalQuestions,
+      currentQuestionIndex: runtime?.currentQuestionIndex,
+      questionEndAt: runtime?.questionEndAt || null,
+      timeLeftStr: runtime?.timeLeftStr,
+    });
+  }, [patchLiveEventRuntime]);
 
 
   // ── Render guards ─────────────────────────────────────────────
@@ -692,6 +782,7 @@ export function LiveEvent() {
       return (
         <YouAndMeMatch
           eventId={id}
+          sessionToken={liveSessionTokenRef.current}
           userId={user?.id}
           opponentId={eventData?.opponent_id}
           onSubmit={submitEvent}
@@ -702,6 +793,7 @@ export function LiveEvent() {
       return (
         <TournamentKnockout
           eventId={id}
+          sessionToken={liveSessionTokenRef.current}
           userId={user?.id}
           onSubmit={submitEvent}
         />
@@ -716,17 +808,25 @@ export function LiveEvent() {
           onSubmit={submitEvent}
           isSubmitting={isSubmitting}
           eventId={id}
+          sessionToken={liveSessionTokenRef.current}
           userId={user?.id}
         />
       );
     }
     if (type === 'quiz' && eventData?.quiz_mode === 'competitive') {
-      return <CompetitiveQuizMode eventId={id} />;
+      return (
+        <CompetitiveQuizMode
+          eventId={id}
+          sessionToken={liveSessionTokenRef.current}
+          onRuntimeUpdate={handleCompetitiveRuntime}
+        />
+      );
     }
     if (type === 'treasure_hunt') {
       return (
         <TreasureHuntMode
           eventId={id}
+          sessionToken={liveSessionTokenRef.current}
           forcedEnded={treasureGlobalEnded}
         />
       );

@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { supabase } from '../../lib/supabase';
+import { supabase, serverNow } from '../../lib/supabase';
 import { useStore } from '../../store';
 import { Shield, Play, Send, Clock, ChevronRight, Check, X, LoaderCircle, TriangleAlert, Eye, EyeOff, Columns2, History, FileCode } from 'lucide-react';
 
@@ -75,7 +75,13 @@ export function LiveCoding() {
         setVisibleTestCases(tData || []);
 
         // 4. Participation
-        const { data: part, error: partErr } = await supabase.from('participation').select('id, violations, status').eq('event_id', id).eq('user_id', user.id).single();
+        const { data: participationRows, error: partErr } = await supabase
+          .from('participation')
+          .select('id, violations, status')
+          .eq('event_id', id)
+          .eq('user_id', user.id)
+          .limit(1);
+        const part = Array.isArray(participationRows) ? participationRows[0] : null;
         if (partErr || !part) return navigate(`/events/${id}`);
         if (part.status === 'submitted') return navigate(`/results/${id}`);
         
@@ -105,7 +111,7 @@ export function LiveCoding() {
     if (!eventData?.end_at) return;
     
     const interval = setInterval(() => {
-      const distance = new Date(eventData.end_at).getTime() - Date.now();
+      const distance = new Date(eventData.end_at).getTime() - serverNow();
       if (distance <= 0) {
         clearInterval(interval);
         if (!isSubmittingRef.current) autoSubmitRef.current?.();

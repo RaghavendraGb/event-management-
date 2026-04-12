@@ -11,6 +11,18 @@ const STAGE_INTROS = [
   'A buried chamber opens. One puzzle stands between you and glory...',
 ];
 
+const WAITING_QUOTES = [
+  'Patience is the final key in every treasure story.',
+  'Every explorer earns the finish by staying steady.',
+  'The map rewards calm minds more than rushed steps.',
+];
+
+const WAITING_FACTS = [
+  'Treasure mode applies server-side penalty locks to prevent refresh exploits.',
+  'Ranks are confirmed only when finish order is recorded by the backend.',
+  'Event closes automatically once top 3 players are finalized.',
+];
+
 function formatClock(totalSeconds) {
   const safe = Math.max(0, Number(totalSeconds) || 0);
   const mins = Math.floor(safe / 60);
@@ -18,7 +30,7 @@ function formatClock(totalSeconds) {
   return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 }
 
-export function TreasureHuntMode({ eventId, forcedEnded = false }) {
+export function TreasureHuntMode({ eventId, sessionToken, forcedEnded = false }) {
   const [booting, setBooting] = useState(true);
   const [error, setError] = useState('');
   const [session, setSession] = useState(null);
@@ -33,6 +45,8 @@ export function TreasureHuntMode({ eventId, forcedEnded = false }) {
 
   const introStageRef = useRef(0);
   const isMountedRef = useRef(true);
+  const submitLockedRef = useRef(false);
+  const syncRequestRef = useRef(0);
 
   const isGameEnded = forcedEnded || session?.status === 'ended';
   const isPlayerFinished = player?.status === 'finished';
@@ -42,11 +56,17 @@ export function TreasureHuntMode({ eventId, forcedEnded = false }) {
   const totalStages = Number(session?.totalStages || 1);
   const progressPct = Math.min(100, Math.max(0, (currentStage / Math.max(1, totalStages)) * 100));
   const stageIntro = useMemo(() => STAGE_INTROS[(currentStage - 1) % STAGE_INTROS.length], [currentStage]);
+  const waitingQuote = useMemo(() => WAITING_QUOTES[(currentStage - 1) % WAITING_QUOTES.length], [currentStage]);
+  const waitingFact = useMemo(() => WAITING_FACTS[(currentStage - 1) % WAITING_FACTS.length], [currentStage]);
+  const progressScore = Math.max(0, (currentStage - 1) * 100);
 
   const syncBootstrap = useCallback(async () => {
+    const requestId = ++syncRequestRef.current;
     const { data, error: invokeError } = await supabase.functions.invoke('treasure-engine', {
-      body: { action: 'bootstrap', eventId },
+      body: { action: 'bootstrap', eventId, sessionToken },
     });
+
+    if (requestId !== syncRequestRef.current) return data;
 
     if (invokeError || data?.error) {
       throw new Error(invokeError?.message || data?.error || 'Unable to sync treasure hunt state');
@@ -56,7 +76,7 @@ export function TreasureHuntMode({ eventId, forcedEnded = false }) {
     setPlayer(data.player);
     setQuestion(data.question);
     setPenaltyLeft(Number(data.player?.penaltySecondsLeft || 0));
-  }, [eventId]);
+  }, [eventId, sessionToken]);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -94,13 +114,16 @@ export function TreasureHuntMode({ eventId, forcedEnded = false }) {
   }, [player?.currentStage, stageIntro, isGameEnded, isPlayerFinished]);
 
   useEffect(() => {
-    if (!player?.penaltyUntil && penaltyLeft <= 0) return;
+    if (!player?.penaltyUntil && !player?.penaltyStartAt && penaltyLeft <= 0) return;
     const tick = () => {
-      if (!player?.penaltyUntil) {
+      if (!player?.penaltyUntil && !player?.penaltyStartAt) {
         setPenaltyLeft(0);
         return;
       }
-      const diffMs = new Date(player.penaltyUntil).getTime() - serverNow();
+      const penaltyEndMs = player?.penaltyStartAt && player?.penaltyDurationSeconds
+        ? new Date(player.penaltyStartAt).getTime() + Number(player.penaltyDurationSeconds) * 1000
+        : new Date(player.penaltyUntil).getTime();
+      const diffMs = penaltyEndMs - serverNow();
       const next = Math.max(0, Math.ceil(diffMs / 1000));
       setPenaltyLeft(next);
       if (next <= 0) {
@@ -111,7 +134,7 @@ export function TreasureHuntMode({ eventId, forcedEnded = false }) {
     tick();
     const interval = setInterval(tick, 250);
     return () => clearInterval(interval);
-  }, [player?.penaltyUntil, penaltyLeft, syncBootstrap]);
+  }, [player?.penaltyUntil, player?.penaltyStartAt, player?.penaltyDurationSeconds, penaltyLeft, syncBootstrap]);
 
   useEffect(() => {
     if (!eventId) return;
@@ -135,15 +158,19 @@ export function TreasureHuntMode({ eventId, forcedEnded = false }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!answerInput.trim() || isLocked) return;
+    if (!answerInput.trim() || isLocked || submitLockedRef.current) return;
 
+    submitLockedRef.current = true;
+    const requestId = ++syncRequestRef.current;
     setIsSubmitting(true);
     setFeedback({ type: '', text: '' });
 
     try {
       const { data, error: invokeError } = await supabase.functions.invoke('treasure-engine', {
-        body: { action: 'submit', eventId, answer: answerInput },
+        body: { action: 'submit', eventId, answer: answerInput, sessionToken },
       });
+
+      if (requestId !== syncRequestRef.current) return;
 
       if (invokeError || data?.error) throw new Error(invokeError?.message || data?.error || 'Submission failed');
 
@@ -159,6 +186,8 @@ export function TreasureHuntMode({ eventId, forcedEnded = false }) {
         setPlayer((prev) => ({
           ...prev,
           attempts: Number(data.attempts || (prev?.attempts || 0) + 1),
+          penaltyStartAt: data.penaltyStartAt,
+          penaltyDurationSeconds: Number(data.penaltySeconds || 0),
           penaltyUntil: data.penaltyUntil,
         }));
         setPenaltyLeft(Number(data.penaltySeconds || 0));
@@ -185,6 +214,7 @@ export function TreasureHuntMode({ eventId, forcedEnded = false }) {
       setFeedback({ type: 'bad', text: err.message || 'Submission failed. Retry in a moment.' });
     } finally {
       if (isMountedRef.current) setIsSubmitting(false);
+      submitLockedRef.current = false;
     }
   };
 
@@ -239,7 +269,7 @@ export function TreasureHuntMode({ eventId, forcedEnded = false }) {
 
         <div className="relative mb-7">
           <div className="h-3 rounded-full bg-slate-900/80 border border-white/10 overflow-hidden">
-            <div className="h-full bg-gradient-to-r from-amber-400 via-orange-400 to-emerald-400 transition-all duration-700" style={{ width: `${progressPct}%` }} />
+            <div className="h-full bg-linear-to-r from-amber-400 via-orange-400 to-emerald-400 transition-all duration-700" style={{ width: `${progressPct}%` }} />
           </div>
           <div className="mt-2 flex justify-between text-[11px] text-slate-300 uppercase tracking-wider">
             <span>Map Progress</span>
@@ -287,6 +317,21 @@ export function TreasureHuntMode({ eventId, forcedEnded = false }) {
                 ? `You finished at rank #${player.finishRank}. Waiting for the hunt to close when top 3 complete.`
                 : 'You finished the trail. Waiting for final rankings.'}
             </p>
+            <div className="mt-4 rounded-xl border border-emerald-300/25 bg-slate-950/35 p-4">
+              <p className="text-[11px] uppercase tracking-[0.16em] text-emerald-200 font-bold mb-1">Waiting for winner announcement...</p>
+              <p className="text-sm text-emerald-50">{waitingQuote}</p>
+              <p className="text-xs text-emerald-100/80 mt-2">Fact: {waitingFact}</p>
+              <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                <div className="rounded-lg border border-white/10 bg-slate-950/45 p-2">
+                  <p className="text-slate-300">Progress Score</p>
+                  <p className="text-white font-black text-sm">{progressScore}</p>
+                </div>
+                <div className="rounded-lg border border-white/10 bg-slate-950/45 p-2">
+                  <p className="text-slate-300">Attempts</p>
+                  <p className="text-white font-black text-sm">{Number(player?.attempts || 0)}</p>
+                </div>
+              </div>
+            </div>
           </div>
         ) : (
           <div className="relative grid gap-6 lg:grid-cols-[1.3fr_0.7fr]">

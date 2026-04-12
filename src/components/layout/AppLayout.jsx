@@ -8,6 +8,7 @@ import { RouteErrorBoundary } from './RouteErrorBoundary';
 
 export function AppLayout() {
   const location = useLocation();
+  const liveRuntime = useStore((state) => state.liveEventRuntime);
   const networkStatus = useStore((state) => state.networkStatus);
   const [showRecovery, setShowRecovery] = useState(false);
 
@@ -53,10 +54,12 @@ export function AppLayout() {
     return null;
   };
 
+  const shouldShowLiveBanner = !!liveRuntime?.eventId && !['/live/', '/admin', '/login', '/signup'].some((p) => location.pathname.startsWith(p));
+
   return (
     <div style={{ display: 'flex', height: '100dvh', background: 'var(--bg)', maxWidth: '100%' }}>
       <Sidebar />
-      <main style={{ flex: 1, minWidth: 0, overflowY: 'auto', overflowX: 'auto', display: 'flex', flexDirection: 'column', position: 'relative' }}>
+      <main style={{ flex: 1, minWidth: 0, overflowY: 'auto', overflowX: 'auto', display: 'flex', flexDirection: 'column', position: 'relative', paddingTop: shouldShowLiveBanner ? 44 : 0 }}>
         {/* Global Live Event Banner */}
         <LiveBanner />
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { deleteFromCloudinary } from '../../../lib/cloudinary';
 import { CloudinaryUpload } from '../../../components/ece/CloudinaryUpload';
@@ -44,8 +44,6 @@ export function AdminEceOrganisation() {
   const [deletingCreatorId, setDeletingCreatorId] = useState(null);
   const [opError, setOpError] = useState('');
 
-  const clearOpError = () => setOpError('');
-
   const normalizeText = (value) => String(value || '').trim();
 
   const safeDeleteCloudinary = async (publicId, resourceType = 'image') => {
@@ -57,9 +55,9 @@ export function AdminEceOrganisation() {
     }
   };
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
-    clearOpError();
+    setOpError('');
     try {
       const [orgRes, creatorsRes, facultyRes] = await Promise.all([
         supabase.from('ece_organisation').select('*').limit(1).maybeSingle(),
@@ -85,18 +83,18 @@ export function AdminEceOrganisation() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => {
       loadData();
     }, 0);
     return () => clearTimeout(timer);
-  }, []);
+  }, [loadData]);
 
   // -- Seed default creators if none exist --
   const handleSeedCreators = async () => {
-    clearOpError();
+    setOpError('');
     const { error } = await supabase.from('ece_creators').insert(DEFAULT_CREATORS);
     if (error) {
       setOpError(error.message || 'Unable to seed default creators.');
@@ -109,7 +107,7 @@ export function AdminEceOrganisation() {
   const handleSaveOrg = async (e) => {
     e.preventDefault();
     setSavingOrg(true);
-    clearOpError();
+    setOpError('');
     try {
       if (orgId) {
         const { error } = await supabase.from('ece_organisation').update({ ...orgForm, updated_at: new Date().toISOString() }).eq('id', orgId);
@@ -131,7 +129,7 @@ export function AdminEceOrganisation() {
   const handleFacultySubmit = async (e) => {
     e.preventDefault();
     setSavingFaculty(true);
-    clearOpError();
+    setOpError('');
     const payload = {
       ...facultyForm,
       name: normalizeText(facultyForm.name),
@@ -163,7 +161,7 @@ export function AdminEceOrganisation() {
   const handleDeleteFaculty = async (f) => {
     if (!window.confirm(`Delete faculty "${f.name}"?`)) return;
     setDeletingFacultyId(f.id);
-    clearOpError();
+    setOpError('');
     try {
       await safeDeleteCloudinary(f.photo_public_id, 'image');
       const { error } = await supabase.from('ece_faculty').delete().eq('id', f.id);
@@ -180,7 +178,7 @@ export function AdminEceOrganisation() {
   const handleCreatorSubmit = async (e) => {
     e.preventDefault();
     setSavingCreator(true);
-    clearOpError();
+    setOpError('');
     const payload = {
       ...creatorForm,
       name: normalizeText(creatorForm.name),
@@ -214,7 +212,7 @@ export function AdminEceOrganisation() {
   const handleDeleteCreator = async (c) => {
     if (!window.confirm(`Delete creator "${c.name}"?`)) return;
     setDeletingCreatorId(c.id);
-    clearOpError();
+    setOpError('');
     try {
       await safeDeleteCloudinary(c.photo_public_id, 'image');
       const { error } = await supabase.from('ece_creators').delete().eq('id', c.id);

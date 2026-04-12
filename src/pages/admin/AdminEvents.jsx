@@ -59,6 +59,11 @@ const dayEnd = (dateValue) => {
   return new Date(`${dateValue}T23:59:59.999`).toISOString();
 };
 
+const isAmbiguousCurrentQuestionIndexError = (message) => {
+  const text = String(message || '').toLowerCase();
+  return text.includes('current_question_index') && text.includes('ambiguous');
+};
+
 const getEventModeKey = (eventLike) => {
   if (!eventLike) return 'quiz_normal';
   if (eventLike.type === 'quiz') {
@@ -123,12 +128,13 @@ export function AdminEvents() {
 
   // Feature 3: Admin status panel expanded event
   const [statusPanelEventId, setStatusPanelEventId] = useState(null);
+  const isConfirmReady = confirmInput.trim().toUpperCase() === 'CONFIRM';
 
   // ── Fetch ──────────────────────────────────────────────────
   const fetchEvents = useCallback(async () => {
     const { data } = await supabase
       .from('events')
-      .select('*, participation(count)')
+      .select('*, participation(count), event_questions(count)')
       .order('created_at', { ascending: false });
     if (data) setEvents(data);
     setLoading(false);
@@ -284,19 +290,8 @@ export function AdminEvents() {
   };
 
   const confirmStatusChange = async () => {
-    if (!confirmModal || confirmInput !== 'CONFIRM') return;
+    if (!confirmModal || !isConfirmReady) return;
     const { eventId, action } = confirmModal;
-
-    let updates = { status: action };
-    if (action === 'live') {
-      updates.status = 'live';
-      updates.start_at = new Date().toISOString();
-      updates.results_announced = false; // Reset on start
-    }
-    if (action === 'ended') {
-      updates.status = 'ended';
-      updates.end_at = new Date().toISOString();
-    }
     if (action === 'announce') {
       const { error } = await supabase.from('events').update({ results_announced: true }).eq('id', eventId);
       if (!error) fetchEvents();
@@ -306,9 +301,64 @@ export function AdminEvents() {
       return;
     }
 
-    const { error } = await supabase.from('events').update(updates).eq('id', eventId);
-    if (!error) fetchEvents();
-    else alert(error.message);
+    const controllerAction = action === 'live' ? 'start' : action === 'ended' ? 'end' : action;
+    let ok = false;
+    let failureMessage = '';
+
+    try {
+      const { data, error } = await supabase.functions.invoke('event-controller', {
+        body: {
+          action: controllerAction,
+          eventId,
+          questionDurationSeconds: 15,
+          force: false,
+        },
+      });
+      if (!error && data?.ok) {
+        ok = true;
+      } else {
+        failureMessage = error?.message || data?.message || 'Status update failed via Edge Function';
+      }
+    } catch (invokeErr) {
+      failureMessage = invokeErr?.message || 'Failed to send request to Edge Function';
+    }
+
+    if (!ok) {
+      const { data: rpcData, error: rpcError } = await supabase.rpc('admin_control_event', {
+        p_event_id: eventId,
+        p_action: controllerAction,
+        p_question_duration_seconds: 15,
+        p_force: false,
+      });
+
+      const rpcRow = Array.isArray(rpcData) ? rpcData[0] : rpcData;
+      if (!rpcError && rpcRow?.ok) {
+        ok = true;
+      } else {
+        failureMessage = rpcError?.message || rpcRow?.message || failureMessage || 'Status update failed';
+      }
+    }
+
+    if (!ok && isAmbiguousCurrentQuestionIndexError(failureMessage)) {
+      const nowIso = new Date().toISOString();
+      const directPayload = controllerAction === 'start'
+        ? { status: 'live', results_announced: false, start_at: nowIso }
+        : { status: 'ended', end_at: nowIso, question_end_at: nowIso };
+
+      const { error: directError } = await supabase
+        .from('events')
+        .update(directPayload)
+        .eq('id', eventId);
+
+      if (!directError) {
+        ok = true;
+      } else {
+        failureMessage = directError.message || failureMessage;
+      }
+    }
+
+    if (ok) fetchEvents();
+    else alert(failureMessage);
     setConfirmModal(null);
     setConfirmInput('');
   };
@@ -481,7 +531,7 @@ export function AdminEvents() {
             <input
               type="text"
               value={confirmInput}
-              onChange={e => setConfirmInput(e.target.value)}
+              onChange={e => setConfirmInput(e.target.value.toUpperCase())}
               placeholder="CONFIRM"
               style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: 12, color: 'var(--text-primary)', fontFamily: 'ui-monospace, monospace', textTransform: 'uppercase', marginBottom: 24, fontSize: 14 }}
             />
@@ -496,7 +546,7 @@ export function AdminEvents() {
               </button>
               <button
                 onClick={confirmStatusChange}
-                disabled={confirmInput !== 'CONFIRM'}
+                disabled={!isConfirmReady}
                 className="btn-primary"
                 style={{
                   flex: 1,
@@ -703,6 +753,7 @@ export function AdminEvents() {
             const isExpanded       = expandedEventId === evt.id;
             const assigned         = assignedQMap[evt.id] || [];
             const assignedMeta     = assignedMetaMap[evt.id] || [];
+            const assignedCount    = assignedQMap[evt.id]?.length ?? evt.event_questions?.[0]?.count ?? 0;
             const guided           = guidedState[evt.id];
             const isGuidedActive   = guided?.active && isExpanded;
             const modeKey          = getEventModeKey(evt);
@@ -711,7 +762,7 @@ export function AdminEvents() {
             const unassignedQuestions = scopedQuestions.filter(q => !assigned.includes(q.id));
             const guidedQuestionIndex = (guided?.currentStep ?? 1) - 1;
             const guidedQuestion = unassignedQuestions[guidedQuestionIndex] || unassignedQuestions[0] || null;
-            const canGoLive = assigned.length > 0 && (evt.type !== 'youandme' || evt.youandme_enabled);
+            const canGoLive = assignedCount > 0;
 
             return (
               <div key={evt.id}
@@ -773,7 +824,7 @@ export function AdminEvents() {
                           <Users size={14} /> <span style={{ color: 'var(--text-secondary)', fontWeight: 700 }}>{participantCount}</span> Registered
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <ListChecks size={14} /> <span style={{ color: 'var(--text-secondary)', fontWeight: 700 }}>{assigned.length}</span> Assigned
+                          <ListChecks size={14} /> <span style={{ color: 'var(--text-secondary)', fontWeight: 700 }}>{assignedCount}</span> Assigned
                         </div>
                       </div>
                     </div>

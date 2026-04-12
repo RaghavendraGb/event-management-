@@ -71,3 +71,33 @@ The platform supports a robust `is_admin()` SQL definition letting Event Organiz
 Built separate from React, an autonomous Deno TypeScript function lives on the Edge Server (`supabase/functions/send-email`).
 *   It securely stores secret configuration codes (e.g. `RESEND_API_KEY`).
 *   By issuing `HTTP POST` requests locally on the frontend, the Edge computes dynamic HTML markup (dynamically building custom confirmation blocks vs Winner ranking emails) and delegates it reliably over TCP to the Resend cloud platform without ever exposing mail keys to the end-users.
+
+***
+
+## 5. Centralized Event Controller (Backend Brain)
+
+The platform now includes a centralized control plane for event lifecycle orchestration.
+
+*   **Edge Function**: `supabase/functions/event-controller/index.ts`
+    *   Authenticates the caller using the request JWT.
+    *   Accepts control actions: `start`, `pause`, `resume`, `end`, `force_end`.
+    *   Calls one authoritative RPC (`admin_control_event`) and returns synchronized event state.
+
+*   **RPC Control Contract**: `public.admin_control_event(...)`
+    *   Lives in `database/event_mode_compat_patch.sql`.
+    *   Enforces **admin-only** control (`is_admin()` guard).
+    *   Locks the event row (`FOR UPDATE`) for race-safe transitions.
+    *   Updates event state centrally (`status`, `current_question_index`, `question_end_at`, `results_announced`).
+    *   Optionally syncs mode-specific session tables (competitive / treasure) when they are available.
+
+*   **State Versioning for Realtime Consistency**
+    *   `events.state_version` and trigger `bump_event_state_version()` provide monotonic version bumps for meaningful state changes.
+    *   `events.controller_updated_at` tracks latest server-side control timestamp.
+    *   Frontend listeners can safely reject stale updates by comparing version numbers.
+
+*   **Scalability & Sync Indexes**
+    *   Added indexes for event synchronization and participation lookups:
+      *   `(id, state_version, status, current_question_index, question_end_at)` on `events`
+      *   `(event_id, user_id, status)` on `participation`
+
+This architecture ensures all critical state transitions are server-authoritative while game-mode engines remain specialized execution workers.

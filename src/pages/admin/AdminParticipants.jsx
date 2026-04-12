@@ -29,9 +29,16 @@ export function AdminParticipants() {
 
   // FIX #20: cleanup camera stream on component unmount
   useEffect(() => {
+    const stream = streamRef.current;
+    const videoEl = videoRef.current;
+
     return () => {
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(t => t.stop());
+      if (stream) {
+        stream.getTracks().forEach(t => t.stop());
+        streamRef.current = null;
+      }
+      if (videoEl) {
+        videoEl.srcObject = null;
       }
     };
   }, []);
@@ -80,7 +87,13 @@ export function AdminParticipants() {
   const toggleScanner = async () => {
     if (scannerOpen) {
       // Stop
-      if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(t => t.stop());
+        streamRef.current = null;
+      }
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+      }
       // FIX #19: update ref alongside state
       scannerOpenRef.current = false;
       setScannerOpen(false);
@@ -119,7 +132,13 @@ export function AdminParticipants() {
       
       if (code) {
         verifyQR(code.data);
-        if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach(t => t.stop());
+          streamRef.current = null;
+        }
+        if (videoRef.current) {
+          videoRef.current.srcObject = null;
+        }
         // FIX #19: update ref before state to stop rAF loop immediately
         scannerOpenRef.current = false;
         setScannerOpen(false);

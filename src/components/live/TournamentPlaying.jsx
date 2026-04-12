@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 
 export function TournamentPlaying({
@@ -14,6 +14,7 @@ export function TournamentPlaying({
   const [submitted, setSubmitted] = useState(false);
   const [feedback, setFeedback] = useState(null);
   const [opponent, setOpponent] = useState(null);
+  const submitLockedRef = useRef(false);
 
   const isPlayer1 = match.player1_id === userId;
   const opponentId = isPlayer1 ? match.player2_id : match.player1_id;
@@ -54,8 +55,9 @@ export function TournamentPlaying({
   }, [submitted]);
 
   const handleSelectAnswer = (option) => {
-    if (submitted) return;
+    if (submitted || submitLockedRef.current) return;
 
+    submitLockedRef.current = true;
     setSubmitted(true);
     setFeedback({
       answer: option,
@@ -64,7 +66,9 @@ export function TournamentPlaying({
     });
 
     // Submit to backend
-    onAnswerSubmit(option);
+    Promise.resolve(onAnswerSubmit(option)).finally(() => {
+      submitLockedRef.current = false;
+    });
   };
 
   const getTimeColor = () => {
@@ -74,7 +78,7 @@ export function TournamentPlaying({
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-950 to-slate-900 pt-16 pb-10">
+    <div className="min-h-screen bg-linear-to-b from-slate-950 to-slate-900 pt-16 pb-10">
       <div className="max-w-7xl mx-auto px-4">
         {/* Top HUD: Match Info */}
         <div className="flex justify-between items-center mb-8 bg-slate-900/80 backdrop-blur rounded-xl p-6 border border-slate-800">
@@ -115,7 +119,7 @@ export function TournamentPlaying({
               <div className="text-xs uppercase text-slate-500 font-bold mb-2">
                 Opponent
               </div>
-              <div className="text-xl font-bold text-white break-words">
+              <div className="text-xl font-bold text-white wrap-break-word">
                 {opponent || 'Loading...'}
               </div>
             </div>
@@ -152,7 +156,7 @@ export function TournamentPlaying({
 
           {/* Center: Question and Options */}
           <div className="lg:col-span-2">
-            <div className="bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 rounded-xl p-8">
+            <div className="bg-linear-to-br from-slate-800 to-slate-900 border border-slate-700 rounded-xl p-8">
               {/* Question */}
               <h2 className="text-2xl md:text-3xl font-black text-white text-center mb-8 leading-tight">
                 {question.question}
@@ -248,7 +252,7 @@ export function TournamentPlaying({
         {/* Progress Bar */}
         <div className="mt-8 w-full h-1 bg-slate-800 rounded-full overflow-hidden">
           <div
-            className="h-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all duration-300"
+            className="h-full bg-linear-to-r from-blue-500 to-purple-500 transition-all duration-300"
             style={{ width: `${((30 - timeLeft) / 30) * 100}%` }}
           />
         </div>

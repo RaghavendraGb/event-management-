@@ -3,6 +3,8 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 type Action = 'bootstrap' | 'submit';
 
+const requestThrottle = new Map<string, number>();
+
 type StageQuestion = {
   question_id: string;
   question: string;
@@ -32,6 +34,59 @@ function toQuestionPayload(q: StageQuestion | null) {
     hint: q.hint,
     media: q.media_url,
   };
+}
+
+function parseUsedQuestionIds(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((id) => String(id || '').trim())
+    .filter(Boolean);
+}
+
+function pickFreshQuestion(
+  pool: StageQuestion[],
+  usedIds: string[],
+  avoidQuestionId?: string | null,
+) {
+  const usedSet = new Set(usedIds);
+
+  let candidates = pool.filter((q) => !usedSet.has(q.question_id) && q.question_id !== avoidQuestionId);
+
+  if (candidates.length === 0) {
+    // Pool exhausted: reset history for this stage but still avoid immediate repeat when possible.
+    candidates = pool.filter((q) => q.question_id !== avoidQuestionId);
+  }
+
+  if (candidates.length === 0) {
+    candidates = [...pool];
+  }
+
+  const picked = pickRandom(candidates);
+  return picked;
+}
+
+async function assertActiveSessionOwnership(
+  admin: ReturnType<typeof createClient>,
+  eventId: string,
+  userId: string,
+  sessionToken: string,
+) {
+  if (!sessionToken) {
+    return { ok: false, error: 'Missing session token' };
+  }
+
+  const { data: participation } = await admin
+    .from('participation')
+    .select('active_session_id')
+    .eq('event_id', eventId)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (!participation || participation.active_session_id !== sessionToken) {
+    return { ok: false, error: 'This tab no longer owns the active session.' };
+  }
+
+  return { ok: true };
 }
 
 async function getStagePool(
@@ -139,6 +194,7 @@ serve(async (req) => {
     const body = await req.json();
     const action = body?.action as Action;
     const eventId = body?.eventId as string;
+    const sessionToken = body?.sessionToken as string;
 
     if (!action || !eventId) {
       return new Response(JSON.stringify({ error: 'Missing action/eventId' }), {
@@ -146,6 +202,19 @@ serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
+
+    const throttleKey = `${userId}:${eventId}:${action}`;
+    const now = Date.now();
+    for (const [key, timestamp] of requestThrottle.entries()) {
+      if (now - timestamp > 3000) requestThrottle.delete(key);
+    }
+    const lastCall = requestThrottle.get(throttleKey) || 0;
+    if (now - lastCall < 300) {
+      return new Response(JSON.stringify({ ok: true, throttled: true }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    requestThrottle.set(throttleKey, now);
 
     const { data: eventRow } = await supabaseAdmin
       .from('events')
@@ -170,6 +239,14 @@ serve(async (req) => {
     const totalStages = await getTotalStages(supabaseAdmin, eventId);
     if (!totalStages || totalStages < 1) {
       return new Response(JSON.stringify({ error: 'No treasure stages configured', code: 'NO_STAGES' }), {
+        status: 409,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const sessionOwnership = await assertActiveSessionOwnership(supabaseAdmin, eventId, userId, sessionToken);
+    if (!sessionOwnership.ok) {
+      return new Response(JSON.stringify({ error: sessionOwnership.error }), {
         status: 409,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -231,19 +308,28 @@ serve(async (req) => {
       const now = Date.now();
       const penaltyMs = player?.penalty_until ? new Date(player.penalty_until).getTime() - now : 0;
       const activePenalty = Math.max(0, penaltyMs);
+      const penaltyStartAt = player?.penalty_start_at || null;
+      const penaltyDurationSeconds = penaltyStartAt && player?.penalty_until
+        ? Math.max(0, Math.ceil((new Date(player.penalty_until).getTime() - new Date(penaltyStartAt).getTime()) / 1000))
+        : Math.ceil(activePenalty / 1000);
 
       let question: StageQuestion | null = null;
       if (player?.status === 'playing') {
         const pool = await getStagePool(supabaseAdmin, eventId, Number(player.current_stage));
         if (pool.length > 0) {
+          const usedQuestionIds = parseUsedQuestionIds(player?.used_question_ids);
           if (player?.last_question_id) {
             question = pool.find((q) => q.question_id === player.last_question_id) || null;
           }
           if (!question) {
-            question = pickRandom(pool);
+            question = pickFreshQuestion(pool, usedQuestionIds);
+            const nextUsed = Array.from(new Set([...usedQuestionIds, question.question_id]));
             await supabaseAdmin
               .from('treasure_hunt_player_state')
-              .update({ last_question_id: question.question_id })
+              .update({
+                last_question_id: question.question_id,
+                used_question_ids: nextUsed,
+              })
               .eq('event_id', eventId)
               .eq('user_id', userId);
           }
@@ -265,7 +351,9 @@ serve(async (req) => {
           userId,
           currentStage: Number(player?.current_stage || 1),
           attempts: Number(player?.attempts || 0),
+          penaltyStartAt,
           penaltyUntil: player?.penalty_until || null,
+          penaltyDurationSeconds,
           penaltySecondsLeft: Math.ceil(activePenalty / 1000),
           status: player?.status || 'playing',
           finishRank: player?.finish_rank || null,
@@ -338,9 +426,19 @@ serve(async (req) => {
       });
     }
 
+    const usedQuestionIds = parseUsedQuestionIds(player?.used_question_ids);
     let activeQuestion = pool.find((q) => q.question_id === player.last_question_id) || null;
     if (!activeQuestion) {
-      activeQuestion = pickRandom(pool);
+      activeQuestion = pickFreshQuestion(pool, usedQuestionIds);
+      const nextUsed = Array.from(new Set([...usedQuestionIds, activeQuestion.question_id]));
+      await supabaseAdmin
+        .from('treasure_hunt_player_state')
+        .update({
+          last_question_id: activeQuestion.question_id,
+          used_question_ids: nextUsed,
+        })
+        .eq('event_id', eventId)
+        .eq('user_id', userId);
     }
 
     const isCorrect = normalize(activeQuestion.answer) === submittedAnswer;
@@ -370,15 +468,17 @@ serve(async (req) => {
       }
 
       const nextPool = await getStagePool(supabaseAdmin, eventId, nextStage);
-      const nextQuestion = nextPool.length ? pickRandom(nextPool) : null;
+      const nextQuestion = nextPool.length ? pickFreshQuestion(nextPool, []) : null;
 
       await supabaseAdmin
         .from('treasure_hunt_player_state')
         .update({
           current_stage: nextStage,
           attempts: 0,
+          penalty_start_at: null,
           penalty_until: null,
           last_question_id: nextQuestion?.question_id || null,
+          used_question_ids: nextQuestion ? [nextQuestion.question_id] : [],
         })
         .eq('event_id', eventId)
         .eq('user_id', userId);
@@ -400,17 +500,21 @@ serve(async (req) => {
 
     const nextAttempts = Number(player.attempts || 0) + 1;
     const penaltySeconds = nextAttempts * 20;
+    const penaltyStartAt = new Date().toISOString();
     const penaltyUntil = new Date(Date.now() + penaltySeconds * 1000).toISOString();
 
-    const alternatives = pool.filter((q) => q.question_id !== activeQuestion.question_id);
-    const rotated = alternatives.length ? pickRandom(alternatives) : activeQuestion;
+    const usedWithActive = Array.from(new Set([...usedQuestionIds, activeQuestion.question_id]));
+    const rotated = pickFreshQuestion(pool, usedWithActive, activeQuestion.question_id);
+    const nextUsed = Array.from(new Set([...usedWithActive, rotated.question_id]));
 
     await supabaseAdmin
       .from('treasure_hunt_player_state')
       .update({
         attempts: nextAttempts,
+        penalty_start_at: penaltyStartAt,
         penalty_until: penaltyUntil,
         last_question_id: rotated.question_id,
+        used_question_ids: nextUsed,
       })
       .eq('event_id', eventId)
       .eq('user_id', userId);
@@ -419,6 +523,7 @@ serve(async (req) => {
       ok: true,
       result: 'wrong',
       penaltySeconds,
+      penaltyStartAt,
       penaltyUntil,
       attempts: nextAttempts,
       message: 'Wrong path. Wait for cooldown before the next clue appears.',

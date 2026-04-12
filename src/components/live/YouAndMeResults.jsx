@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useMemo } from 'react'
 
 export default function YouAndMeResults({
   session,
@@ -8,16 +8,27 @@ export default function YouAndMeResults({
   winnerId,
   currentPlayerId,
 }) {
-  const [isWinner, setIsWinner] = useState(false)
+  const eventStatus = session?.status || 'active'
   const myRow = leaderboard?.find((entry) => entry.player_id === currentPlayerId)
   const opponentRow = leaderboard?.find((entry) => entry.player_id !== currentPlayerId)
   const myScore = Number(myRow?.total_score ?? playerState?.totalScore ?? 0)
   const opponentScore = Number(opponentRow?.total_score ?? opponent?.totalScore ?? 0)
   const isTie = myScore === opponentScore
+  const isWinner = useMemo(
+    () => eventStatus === 'ended' && winnerId === currentPlayerId,
+    [eventStatus, winnerId, currentPlayerId]
+  )
 
-  useEffect(() => {
-    setIsWinner(winnerId === currentPlayerId)
-  }, [winnerId, currentPlayerId])
+  if (eventStatus !== 'ended') {
+    return (
+      <div style={styles.container}>
+        <div style={styles.loserBox}>
+          <h1>Waiting for results...</h1>
+          <p>The event is still in progress. Final rankings will appear once the admin ends it.</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div style={styles.container}>
@@ -37,9 +48,7 @@ export default function YouAndMeResults({
       <div style={styles.scoreComparison}>
         <div style={styles.scoreCard}>
           <h3>Your Score</h3>
-          <div style={styles.finalScore}>
-            {isTie ? 'TIE' : myScore}
-          </div>
+          <div style={styles.finalScore}>{isTie ? 'TIE' : myScore}</div>
           <p>{playerState.correctAnswers} correct answers</p>
         </div>
 
@@ -47,9 +56,7 @@ export default function YouAndMeResults({
 
         <div style={styles.scoreCard}>
           <h3>Opponent Score</h3>
-          <div style={styles.finalScore}>
-            {isTie ? 'TIE' : opponentScore}
-          </div>
+          <div style={styles.finalScore}>{isTie ? 'TIE' : opponentScore}</div>
           <p>{opponent?.correctAnswers} correct answers</p>
         </div>
       </div>

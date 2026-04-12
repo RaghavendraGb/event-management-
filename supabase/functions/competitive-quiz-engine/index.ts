@@ -3,6 +3,8 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 type Action = 'bootstrap' | 'submit' | 'heartbeat' | 'violation' | 'control';
 
+const requestThrottle = new Map<string, number>();
+
 type SessionRow = {
   event_id: string;
   status: 'upcoming' | 'live' | 'paused' | 'ended';
@@ -123,6 +125,30 @@ async function getUserRank(admin: ReturnType<typeof createClient>, eventId: stri
   return idx >= 0 ? idx + 1 : null;
 }
 
+async function assertActiveSessionOwnership(
+  admin: ReturnType<typeof createClient>,
+  eventId: string,
+  userId: string,
+  sessionToken: string,
+) {
+  if (!sessionToken) {
+    return { ok: false, error: 'Missing session token' };
+  }
+
+  const { data: participation } = await admin
+    .from('participation')
+    .select('active_session_id')
+    .eq('event_id', eventId)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (!participation || participation.active_session_id !== sessionToken) {
+    return { ok: false, error: 'This tab no longer owns the active session.' };
+  }
+
+  return { ok: true };
+}
+
 async function syncCompetitiveScoresToParticipation(
   admin: ReturnType<typeof createClient>,
   eventId: string,
@@ -176,6 +202,7 @@ serve(async (req) => {
 
     const action = body?.action as Action;
     const eventId = body?.eventId as string;
+    const sessionToken = body?.sessionToken as string;
     if (!action || !eventId) {
       return new Response(JSON.stringify({ error: 'Missing action/eventId' }), {
         status: 400,
@@ -201,6 +228,19 @@ serve(async (req) => {
       .select('role')
       .eq('id', userId)
       .maybeSingle();
+
+    const throttleKey = `${userId}:${eventId}:${action}`;
+    const now = Date.now();
+    for (const [key, timestamp] of requestThrottle.entries()) {
+      if (now - timestamp > 3000) requestThrottle.delete(key);
+    }
+    const lastCall = requestThrottle.get(throttleKey) || 0;
+    if (now - lastCall < 300) {
+      return new Response(JSON.stringify({ ok: true, throttled: true }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    requestThrottle.set(throttleKey, now);
 
     const isAdmin = profile?.role === 'admin';
 
@@ -263,6 +303,14 @@ serve(async (req) => {
       }
 
       return new Response(JSON.stringify({ ok: true }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const sessionOwnership = await assertActiveSessionOwnership(admin, eventId, userId, sessionToken);
+    if (!sessionOwnership.ok) {
+      return new Response(JSON.stringify({ error: sessionOwnership.error }), {
+        status: 409,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }

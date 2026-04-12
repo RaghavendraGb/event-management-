@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { supabase } from '../../lib/supabase';
+import { supabase, serverNow } from '../../lib/supabase';
 import { useStore } from '../../store';
 import { QRCodeSVG } from 'qrcode.react';
 import { Users, Clock, Radio, Activity, Bell, BellOff } from 'lucide-react';
@@ -24,6 +24,7 @@ export function Lobby() {
     typeof Notification !== 'undefined' ? Notification.permission : 'default'
   );
   const eventTypeRef = useRef(null);
+  const eventVersionRef = useRef(0);
   const isMountedRef = useRef(true);
   const notifTimer5Ref = useRef(null);
   const notifTimerStartRef = useRef(null);
@@ -54,6 +55,7 @@ export function Lobby() {
       setTicket(ticketData);
       setEventData(ticketData.events);
       eventTypeRef.current = ticketData.events.type;
+      eventVersionRef.current = Number(ticketData.events.state_version || 0);
 
       // If results announced or event ended, redirect to results — not lobby
       if (ticketData.events.results_announced === true || ticketData.events.status === 'ended') {
@@ -123,7 +125,7 @@ export function Lobby() {
 
     const startMs = new Date(eventData.start_at).getTime();
     const fiveMinBefore = startMs - 5 * 60 * 1000;
-    const now = Date.now();
+    const now = serverNow();
 
     // 5-minute warning (only if it's in the future)
     if (fiveMinBefore > now) {
@@ -171,6 +173,9 @@ export function Lobby() {
     // 1. Setup Status Subscription / Fallback Polling
     const statusChannel = supabase.channel(`event-${id}-updates`)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'events', filter: `id=eq.${id}` }, (payload) => {
+        const incomingVersion = Number(payload?.new?.state_version || 0);
+        if (incomingVersion < eventVersionRef.current) return;
+        eventVersionRef.current = incomingVersion;
         if (payload.new.results_announced === true || payload.new.status === 'ended') {
           if (fallbackPoller) {
             clearInterval(fallbackPoller);
@@ -195,8 +200,11 @@ export function Lobby() {
       .subscribe();
 
     fallbackPoller = setInterval(async () => {
-      const { data } = await supabase.from('events').select('status, results_announced, type').eq('id', id).single();
+      const { data } = await supabase.from('events').select('status, results_announced, type, state_version').eq('id', id).single();
       if (!data || !isMountedRef.current) return;
+      const incomingVersion = Number(data.state_version || 0);
+      if (incomingVersion < eventVersionRef.current) return;
+      eventVersionRef.current = incomingVersion;
       if (data.results_announced === true || data.status === 'ended') {
         if (fallbackPoller) clearInterval(fallbackPoller);
         navigate(`/results/${id}`);
@@ -233,7 +241,7 @@ export function Lobby() {
   useEffect(() => {
     if (!eventData) return;
     const interval = setInterval(() => {
-      const now = new Date().getTime();
+      const now = serverNow();
       const distance = new Date(eventData.start_at).getTime() - now;
       if (distance < 0) {
         setTimeLeft('Starting Very Soon...');

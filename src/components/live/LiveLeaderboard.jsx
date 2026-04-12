@@ -1,6 +1,9 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Trophy, Users, User, Radio, Clock } from 'lucide-react';
+import { motion } from 'framer-motion';
+
+const MotionDiv = motion.div;
 
 export function LiveLeaderboard({ eventId, currentUserId, limit = 10, isProjector = false }) {
   const [entries, setEntries] = useState([]);
@@ -12,10 +15,12 @@ export function LiveLeaderboard({ eventId, currentUserId, limit = 10, isProjecto
   const stableSnapshotRef = useRef([]);   // last stable snapshot
   const [stableEntries, setStableEntries] = useState([]); // displayed in stable mode
   const stableIntervalRef = useRef(null);
-
-  // Fix #4: throttle timer ref — batches rapid score updates into one re-render
-  const updateThrottleRef = useRef(null);
-  const pendingScoreUpdates = useRef({});  // { participationId: newScore }
+  const fetchGenerationRef = useRef(0);
+  const updatesRef = useRef([]);
+  const flushTimerRef = useRef(null);
+  const pollerStartTimerRef = useRef(null);
+  const pollerIntervalRef = useRef(null);
+  const realtimeConnectedRef = useRef(false);
 
   useEffect(() => {
     let alive = true;
@@ -34,6 +39,8 @@ export function LiveLeaderboard({ eventId, currentUserId, limit = 10, isProjecto
   }, [eventId]);
 
   const fetchBoard = useCallback(async () => {
+    const requestId = ++fetchGenerationRef.current;
+
     if (eventMeta?.type === 'quiz' && eventMeta?.quiz_mode === 'competitive') {
       const { data: players } = await supabase
         .from('competitive_quiz_player_state')
@@ -64,6 +71,7 @@ export function LiveLeaderboard({ eventId, currentUserId, limit = 10, isProjecto
         isMe: p.user_id === currentUserId,
       }));
 
+      if (requestId !== fetchGenerationRef.current) return;
       setTeamsEnabled(false);
       setEntries(enrichedCompetitive);
       return;
@@ -74,8 +82,19 @@ export function LiveLeaderboard({ eventId, currentUserId, limit = 10, isProjecto
         .from('treasure_hunt_player_state')
         .select('user_id, current_stage, attempts, finish_rank, status')
         .eq('event_id', eventId);
+      const orderedPlayers = (players || []).slice().sort((left, right) => {
+        const leftRank = left.finish_rank == null ? Number.POSITIVE_INFINITY : Number(left.finish_rank);
+        const rightRank = right.finish_rank == null ? Number.POSITIVE_INFINITY : Number(right.finish_rank);
+        if (leftRank !== rightRank) return leftRank - rightRank;
 
-      const rows = players || [];
+        const leftStage = Number(left.current_stage || 0);
+        const rightStage = Number(right.current_stage || 0);
+        if (leftStage !== rightStage) return rightStage - leftStage;
+
+        return Number(left.attempts || 0) - Number(right.attempts || 0);
+      });
+
+      const rows = orderedPlayers;
       const userIds = [...new Set(rows.map(p => p.user_id).filter(Boolean))];
       let userMap = {};
       if (userIds.length > 0) {
@@ -96,9 +115,9 @@ export function LiveLeaderboard({ eventId, currentUserId, limit = 10, isProjecto
           avatar: userMap[p.user_id]?.avatar_url || null,
           teamName: null,
           isMe: p.user_id === currentUserId,
-        }))
-        .sort((a, b) => b.score - a.score);
+        }));
 
+      if (requestId !== fetchGenerationRef.current) return;
       setTeamsEnabled(false);
       setEntries(enrichedTreasure);
       return;
@@ -108,10 +127,23 @@ export function LiveLeaderboard({ eventId, currentUserId, limit = 10, isProjecto
       .from('participation')
       .select('id, user_id, team_id, score, teams(name)')
       .eq('event_id', eventId);
+      
+    const orderedParts = (parts || []).slice().sort((left, right) => {
+      const scoreDelta = Number(right.score || 0) - Number(left.score || 0);
+      if (scoreDelta !== 0) return scoreDelta;
 
-    if (!parts) return;
+      const submittedLeft = left.submitted_at ? new Date(left.submitted_at).getTime() : Number.POSITIVE_INFINITY;
+      const submittedRight = right.submitted_at ? new Date(right.submitted_at).getTime() : Number.POSITIVE_INFINITY;
+      if (submittedLeft !== submittedRight) return submittedLeft - submittedRight;
 
-    const userIds = [...new Set(parts.map(p => p.user_id).filter(Boolean))];
+      const registeredLeft = left.registered_at ? new Date(left.registered_at).getTime() : Number.POSITIVE_INFINITY;
+      const registeredRight = right.registered_at ? new Date(right.registered_at).getTime() : Number.POSITIVE_INFINITY;
+      return registeredLeft - registeredRight;
+    });
+
+    if (!orderedParts) return;
+
+    const userIds = [...new Set(orderedParts.map(p => p.user_id).filter(Boolean))];
     let userMap = {};
     if (userIds.length > 0) {
       const { data: users } = await supabase
@@ -123,7 +155,7 @@ export function LiveLeaderboard({ eventId, currentUserId, limit = 10, isProjecto
       }
     }
 
-    const enriched = (parts || []).map(p => ({
+    const enriched = orderedParts.map(p => ({
       id: p.id,
       user_id: p.user_id,
       team_id: p.team_id,
@@ -134,103 +166,89 @@ export function LiveLeaderboard({ eventId, currentUserId, limit = 10, isProjecto
       isMe: p.user_id === currentUserId,
     }));
 
+    if (requestId !== fetchGenerationRef.current) return;
     setEntries(enriched);
     if (enriched.some(e => e.team_id)) setTeamsEnabled(true);
   }, [eventId, currentUserId, eventMeta?.type, eventMeta?.quiz_mode]);
+
+  const onRealtimeUpdate = useCallback(() => {
+    updatesRef.current.push(true);
+  }, []);
+
+  useEffect(() => {
+    flushTimerRef.current = setInterval(() => {
+      if (!updatesRef.current.length) return;
+      updatesRef.current = [];
+      fetchBoard();
+    }, 300);
+
+    return () => {
+      if (flushTimerRef.current) clearInterval(flushTimerRef.current);
+    };
+  }, [fetchBoard]);
 
   useEffect(() => {
     const initialFetchTimer = setTimeout(() => {
       fetchBoard();
     }, 0);
 
-    const isRealtimeConnectedRef = { current: false };
     // Fix #3: track prior disconnect so we can re-sync on reconnect
     const wasDisconnected = { current: false };
-    let pollerTimer = null;
 
     const channel = supabase.channel(`leaderboard-${eventId}`)
       .on('postgres_changes', {
         event: 'UPDATE', schema: 'public', table: 'participation',
         filter: `event_id=eq.${eventId}`
-      }, (payload) => {
-        if (eventMeta?.type === 'quiz' && eventMeta?.quiz_mode === 'competitive') {
-          fetchBoard();
-          return;
-        }
-        if (eventMeta?.type === 'treasure_hunt') {
-          fetchBoard();
-          return;
-        }
-        const { id: participationId, score } = payload.new;
-
-        // Check if we need a full re-hydration (name still placeholder)
-        setEntries(prev => {
-          const existing = prev.find(e => e.id === participationId);
-          if (existing && existing.name === 'Participant') {
-            fetchBoard(); // full re-hydrate for missing name
-            return prev;
-          }
-          return prev; // defer actual score update to the throttled batch
-        });
-
-        // Fix #4: accumulate updates, flush after 350ms of silence
-        pendingScoreUpdates.current[participationId] = score;
-        if (updateThrottleRef.current) clearTimeout(updateThrottleRef.current);
-        updateThrottleRef.current = setTimeout(() => {
-          const updates = { ...pendingScoreUpdates.current };
-          pendingScoreUpdates.current = {};
-          updateThrottleRef.current = null;
-          setEntries(prev => prev.map(e =>
-            updates[e.id] !== undefined ? { ...e, score: updates[e.id] } : e
-          ));
-        }, 350);
+      }, () => {
+        onRealtimeUpdate();
       })
       .on('postgres_changes', {
         event: 'INSERT', schema: 'public', table: 'participation',
         filter: `event_id=eq.${eventId}`
-      }, () => fetchBoard())
+      }, () => onRealtimeUpdate())
       .on('postgres_changes', {
         event: '*', schema: 'public', table: 'competitive_quiz_player_state',
         filter: `event_id=eq.${eventId}`
       }, () => {
-        if (eventMeta?.type === 'quiz' && eventMeta?.quiz_mode === 'competitive') fetchBoard();
+        if (eventMeta?.type === 'quiz' && eventMeta?.quiz_mode === 'competitive') onRealtimeUpdate();
       })
       .on('postgres_changes', {
         event: '*', schema: 'public', table: 'treasure_hunt_player_state',
         filter: `event_id=eq.${eventId}`
       }, () => {
-        if (eventMeta?.type === 'treasure_hunt') fetchBoard();
+        if (eventMeta?.type === 'treasure_hunt') onRealtimeUpdate();
       })
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
-          isRealtimeConnectedRef.current = true;
-          if (pollerTimer) { clearTimeout(pollerTimer); pollerTimer = null; }
+          realtimeConnectedRef.current = true;
+          if (pollerStartTimerRef.current) { clearTimeout(pollerStartTimerRef.current); pollerStartTimerRef.current = null; }
+          if (pollerIntervalRef.current) { clearInterval(pollerIntervalRef.current); pollerIntervalRef.current = null; }
           // Fix #3: re-fetch on reconnect to catch missed updates
           if (wasDisconnected.current) {
             wasDisconnected.current = false;
-            fetchBoard();
+            onRealtimeUpdate();
           }
         }
         if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
           wasDisconnected.current = true;
+          realtimeConnectedRef.current = false;
         }
       });
 
-    let pollerInterval = null;
-    pollerTimer = setTimeout(() => {
-      if (!isRealtimeConnectedRef.current) {
-        pollerInterval = setInterval(fetchBoard, 10000);
+    pollerStartTimerRef.current = setTimeout(() => {
+      if (!realtimeConnectedRef.current) {
+        pollerIntervalRef.current = setInterval(fetchBoard, 10000);
       }
     }, 5000);
 
     return () => {
       clearTimeout(initialFetchTimer);
       supabase.removeChannel(channel);
-      if (pollerTimer) clearTimeout(pollerTimer);
-      if (pollerInterval) clearInterval(pollerInterval);
-      if (updateThrottleRef.current) clearTimeout(updateThrottleRef.current);
+      if (pollerStartTimerRef.current) clearTimeout(pollerStartTimerRef.current);
+      if (pollerIntervalRef.current) clearInterval(pollerIntervalRef.current);
+      if (flushTimerRef.current) clearInterval(flushTimerRef.current);
     };
-  }, [eventId, fetchBoard, eventMeta?.type, eventMeta?.quiz_mode]);
+  }, [eventId, fetchBoard, onRealtimeUpdate, eventMeta?.type, eventMeta?.quiz_mode]);
 
   // Feature 6: Stable mode — maintain a snapshot that refreshes every 2 seconds
   useEffect(() => {
@@ -266,7 +284,6 @@ export function LiveLeaderboard({ eventId, currentUserId, limit = 10, isProjecto
   const renderList = useMemo(() => {
     if (tab === 'solo') {
       return [...activeEntries]
-        .sort((a, b) => b.score - a.score)
         .slice(0, limit)
         .map((e, i) => ({ ...e, rank: i + 1 }));
     }
@@ -287,7 +304,6 @@ export function LiveLeaderboard({ eventId, currentUserId, limit = 10, isProjecto
       if (e.isMe) teamMap[e.team_id].isMe = true;
     });
     return Object.values(teamMap)
-      .sort((a, b) => b.score - a.score)
       .slice(0, limit)
       .map((t, i) => ({ ...t, rank: i + 1 }));
   }, [activeEntries, tab, limit]);
@@ -341,17 +357,26 @@ export function LiveLeaderboard({ eventId, currentUserId, limit = 10, isProjecto
       <div style={{ flex: 1, position: 'relative' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {renderList.map((item, index) => (
-              <div
-                key={item.id || item.uniqueId || index}
+              (() => {
+                const rowKey = item.id || item.uniqueId || `${tab}-${index}`;
+                return (
+              <MotionDiv
+                key={`${rowKey}-${Number(item.score || 0)}`}
+                initial={{ backgroundColor: 'rgba(56,189,248,0.16)', scale: 1.01 }}
+                animate={{
+                  backgroundColor: item.isMe ? 'rgba(37,99,235,0.08)' : 'var(--surface)',
+                  scale: 1,
+                }}
+                transition={{ duration: 0.45, ease: 'easeOut' }}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
                   gap: 12,
                   padding: 10,
-                  background: item.isMe ? 'rgba(37,99,235,0.08)' : 'var(--surface)',
                   border: `1px solid ${item.isMe ? 'rgba(37,99,235,0.25)' : 'var(--border)'}`,
                   borderRadius: 6,
-                  position: 'relative'
+                  position: 'relative',
+                  transition: 'border-color 220ms ease, transform 180ms ease'
                 }}
               >
                 {/* Rank Badge */}
@@ -402,7 +427,9 @@ export function LiveLeaderboard({ eventId, currentUserId, limit = 10, isProjecto
                   </p>
                   {isProjector && <p style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>PTS</p>}
                 </div>
-              </div>
+              </MotionDiv>
+                );
+              })()
             ))}
 
           {renderList.length === 0 && (

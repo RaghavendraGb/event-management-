@@ -42,6 +42,14 @@ function modeLabel(modeKey) {
   return MODE_OPTIONS.find(m => m.key === modeKey)?.label || modeKey;
 }
 
+function resolveModeTags(rawTags, fallbackModeKey = '') {
+  const normalized = normalizeModeTags(rawTags);
+  if (fallbackModeKey && fallbackModeKey !== 'global' && normalized.length === 1 && normalized[0] === 'global') {
+    return [fallbackModeKey];
+  }
+  return normalized;
+}
+
 const EMPTY_FORM = {
   question: '', optA: '', optB: '', optC: '', optD: '',
   correct: 'A', difficulty: 'medium', explanation: '',
@@ -293,7 +301,6 @@ export function AdminQuestions() {
 
   // ── Filtered Questions ─────────────────────────────────────
   const baseFiltered = questions.filter(q => {
-    const tags = normalizeModeTags(q.tags);
     const matchSearch = q.question.toLowerCase().includes(search.toLowerCase());
     const matchDiff   = filterDiff === 'all' || q.difficulty === filterDiff;
     return matchSearch && matchDiff;
@@ -309,9 +316,8 @@ export function AdminQuestions() {
   const activeModeLabel = modeLabel(activeBankMode || 'global');
   const bankQuestions = activeBankMode
     ? baseFiltered.filter(q => {
-        const tags = normalizeModeTags(q.tags);
         if (activeBankMode === 'global') return true;
-        return tags.includes(activeBankMode);
+        return normalizeModeTags(q.tags).includes(activeBankMode);
       })
     : [];
 
@@ -324,6 +330,7 @@ export function AdminQuestions() {
 
   const selectedEvent = events.find(e => e.id === selectedEventId);
   const selectedModeKey = getEventModeKey(selectedEvent);
+  const contextModeKey = activeBankMode || (selectedEventId ? selectedModeKey : 'global');
   const exactModeQuestions = assignmentFiltered.filter(q => normalizeModeTags(q.tags).includes(selectedModeKey));
   const globalQuestions = assignmentFiltered.filter(q => {
     const tags = normalizeModeTags(q.tags);
@@ -338,6 +345,7 @@ export function AdminQuestions() {
   const handleCreate = async (e) => {
     e.preventDefault();
     let payload;
+    const scopedTags = resolveModeTags(formData.mode_tags, contextModeKey);
 
     if (formData.question_type === 'simulation') {
       if (!formData.wokwi_url.trim()) {
@@ -351,7 +359,7 @@ export function AdminQuestions() {
         difficulty: formData.difficulty,
         explanation: formData.explanation || '',
         question_type: 'simulation',
-        tags: normalizeModeTags(formData.mode_tags),
+        tags: scopedTags,
         wokwi_url: formData.wokwi_url.trim(),
         sim_instructions: formData.sim_instructions.trim(),
         sim_expected_output: formData.sim_expected_output.trim(),
@@ -368,7 +376,7 @@ export function AdminQuestions() {
         difficulty: formData.difficulty,
         explanation: formData.explanation,
         question_type: 'mcq',
-        tags: normalizeModeTags(formData.mode_tags),
+        tags: scopedTags,
         created_by: user.id,
       };
     }
@@ -460,6 +468,18 @@ export function AdminQuestions() {
       setEventQuestions(prev => prev.filter(id => id !== qId));
       setEventQMeta(prev => prev.filter(r => r.question_id !== qId));
     } else {
+      const q = questions.find((item) => item.id === qId);
+      const currentTags = normalizeModeTags(q?.tags);
+      if (selectedModeKey !== 'global' && currentTags.length === 1 && currentTags[0] === 'global') {
+        await supabase
+          .from('question_bank')
+          .update({ tags: [selectedModeKey] })
+          .eq('id', qId);
+        setQuestions((prev) => prev.map((item) => (
+          item.id === qId ? { ...item, tags: [selectedModeKey] } : item
+        )));
+      }
+
       const nextOrder = eventQuestions.length + 1;
       const { data } = await supabase.from('event_questions')
         .insert([{ event_id: selectedEventId, question_id: qId, order_num: nextOrder }])
@@ -482,13 +502,15 @@ export function AdminQuestions() {
           const options    = [row.option_a, row.option_b, row.option_c, row.option_d];
           const correctKey = row.correct?.toUpperCase();
           const idx        = ['A','B','C','D'].indexOf(correctKey);
+          const parsedModes = (row.modes || '').split(',').map(s => s.trim()).filter(Boolean);
+          const tags = resolveModeTags(parsedModes, contextModeKey);
           return {
             question:      row.question,
             options,
             correct_answer: idx >= 0 ? options[idx] : options[0],
             difficulty:    row.difficulty || 'medium',
             explanation:   row.explanation || '',
-            tags:          normalizeModeTags((row.modes || '').split(',').map(s => s.trim())),
+            tags,
             created_by:    user.id
           };
         });
@@ -604,7 +626,7 @@ export function AdminQuestions() {
                       setCreationMethod('manual');
                       setFormData(prev => ({
                         ...EMPTY_FORM,
-                        mode_tags: activeBankMode && activeBankMode !== 'global' ? [activeBankMode] : ['global'],
+                        mode_tags: contextModeKey && contextModeKey !== 'global' ? [contextModeKey] : ['global'],
                         difficulty: prev.difficulty || EMPTY_FORM.difficulty,
                       }));
                     }
