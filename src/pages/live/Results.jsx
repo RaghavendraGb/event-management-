@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useStore } from '../../store';
-import { AnimatePresence } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import confetti from 'canvas-confetti';
 import { Award, Share2, CheckCircle2, XCircle, Trophy, Clock, Users } from 'lucide-react';
 // FIX #15: ref to track confetti interval for cleanup
@@ -50,12 +50,32 @@ export function Results() {
         if (eErr) throw new Error(eErr.message);
         setEventData(eData);
 
-        const { data: leaderData, error: lErr } = await supabase
-          .from('participation')
-          .select('user_id, score, team_id, teams(name), users(name, avatar_url, college)')
-          .eq('event_id', id)
-          .order('score', { ascending: false });
-        if (lErr) throw new Error(lErr.message);
+        let leaderData = [];
+        if (eData.type === 'quiz' && eData.quiz_mode === 'competitive') {
+          const { data: competitiveRows, error: competitiveErr } = await supabase
+            .from('competitive_quiz_player_state')
+            .select('user_id, total_score, users(name, avatar_url, college)')
+            .eq('event_id', id)
+            .neq('status', 'disqualified')
+            .order('total_score', { ascending: false });
+          if (competitiveErr) throw new Error(competitiveErr.message);
+
+          leaderData = (competitiveRows || []).map((row) => ({
+            user_id: row.user_id,
+            score: Number(row.total_score || 0),
+            team_id: null,
+            teams: null,
+            users: row.users,
+          }));
+        } else {
+          const { data: participationRows, error: lErr } = await supabase
+            .from('participation')
+            .select('user_id, score, team_id, teams(name), users(name, avatar_url, college)')
+            .eq('event_id', id)
+            .order('score', { ascending: false });
+          if (lErr) throw new Error(lErr.message);
+          leaderData = participationRows || [];
+        }
 
         if (leaderData) {
           setPodium(leaderData.slice(0, 3));
@@ -78,14 +98,28 @@ export function Results() {
         }
 
         // Fetch my personal submitted score (shown on waiting screen too)
-        const { data: pData, error: pErr } = await supabase
-          .from('participation')
-          .select('answers, score')
-          .eq('user_id', user.id)
-          .eq('event_id', id)
-          .single();
-        if (pErr) throw new Error(pErr.message);
-        if (pData?.score !== undefined) setMySubmittedScore(pData.score);
+        let pData = null;
+        if (eData.type === 'quiz' && eData.quiz_mode === 'competitive') {
+          const { data: competitiveMe, error: cErr } = await supabase
+            .from('competitive_quiz_player_state')
+            .select('total_score')
+            .eq('user_id', user.id)
+            .eq('event_id', id)
+            .maybeSingle();
+          if (cErr && cErr.code !== 'PGRST116') throw new Error(cErr.message);
+          if (competitiveMe?.total_score !== undefined) setMySubmittedScore(Number(competitiveMe.total_score || 0));
+          pData = { answers: null, score: Number(competitiveMe?.total_score || 0) };
+        } else {
+          const { data: participationMe, error: pErr } = await supabase
+            .from('participation')
+            .select('answers, score')
+            .eq('user_id', user.id)
+            .eq('event_id', id)
+            .maybeSingle();
+          if (pErr && pErr.code !== 'PGRST116') throw new Error(pErr.message);
+          if (participationMe?.score !== undefined) setMySubmittedScore(participationMe.score);
+          pData = participationMe;
+        }
 
         // ─── KEY FIX: Only start ceremony if event is already ended OR winner announced ──
         // Ceremony triggers on EITHER: results_announced=true OR status=ended
@@ -154,11 +188,30 @@ export function Results() {
         (async () => {
           try {
             // Re-fetch final leaderboard (scores may have changed while waiting)
-            const { data: finalLeader } = await supabase
-              .from('participation')
-              .select('user_id, score, team_id, teams(name), users(name, avatar_url, college)')
-              .eq('event_id', id)
-              .order('score', { ascending: false });
+            let finalLeader = [];
+            if (eventData?.type === 'quiz' && eventData?.quiz_mode === 'competitive') {
+              const { data: competitiveRows } = await supabase
+                .from('competitive_quiz_player_state')
+                .select('user_id, total_score, users(name, avatar_url, college)')
+                .eq('event_id', id)
+                .neq('status', 'disqualified')
+                .order('total_score', { ascending: false });
+
+              finalLeader = (competitiveRows || []).map((row) => ({
+                user_id: row.user_id,
+                score: Number(row.total_score || 0),
+                team_id: null,
+                teams: null,
+                users: row.users,
+              }));
+            } else {
+              const { data: rows } = await supabase
+                .from('participation')
+                .select('user_id, score, team_id, teams(name), users(name, avatar_url, college)')
+                .eq('event_id', id)
+                .order('score', { ascending: false });
+              finalLeader = rows || [];
+            }
             if (finalLeader) {
               setPodium(finalLeader.slice(0, 3));
               const myRankIndex = finalLeader.findIndex(p => p.user_id === user?.id);
@@ -175,7 +228,7 @@ export function Results() {
             }
             // Question review — skip for coding events
             if (eventData?.type !== 'coding_challenge') {
-              const { data: pData } = await supabase.from('participation').select('answers').eq('user_id', user?.id).eq('event_id', id).single();
+              const { data: pData } = await supabase.from('participation').select('answers').eq('user_id', user?.id).eq('event_id', id).maybeSingle();
               const { data: qData } = await supabase.from('event_questions').select('*, question_bank(*)').eq('event_id', id).order('order_num', { ascending: true });
               if (qData && pData) {
                 setQuestions(qData.map(q => ({ ...q.question_bank, my_answer: pData.answers?.[q.id] || null })));

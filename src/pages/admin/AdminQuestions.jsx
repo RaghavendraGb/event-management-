@@ -4,7 +4,7 @@ import { useStore } from '../../store';
 import Papa from 'papaparse';
 import {
   Upload, Plus, Database, Check, ListChecks, Pencil, Trash2,
-  X, ChevronDown, ChevronUp, Eye, Save, Search, Filter
+  X, ChevronDown, ChevronUp, Eye, Save, Search, Filter, CheckCircle2
 } from 'lucide-react';
 
 const DIFFICULTY_COLORS = {
@@ -13,10 +13,40 @@ const DIFFICULTY_COLORS = {
   hard:   'color: var(--red);   border-color: rgba(239,68,68,0.2);   background: rgba(239,68,68,0.05);',
 };
 
+const MODE_OPTIONS = [
+  { key: 'global', label: 'Global (All Events)' },
+  { key: 'quiz_normal', label: 'Quiz - Normal' },
+  { key: 'quiz_competitive', label: 'Quiz - Competitive' },
+  { key: 'youandme', label: 'You & Me' },
+  { key: 'treasure_hunt', label: 'Treasure Hunt' },
+  { key: 'rapid_fire_traditional', label: 'Rapid Fire - Traditional' },
+  { key: 'rapid_fire_knockout', label: 'Rapid Fire - Knockout' },
+];
+
+function normalizeModeTags(tags) {
+  if (!Array.isArray(tags) || tags.length === 0) return ['global'];
+  const clean = [...new Set(tags.map(t => String(t || '').trim().toLowerCase()).filter(Boolean))];
+  return clean.length > 0 ? clean : ['global'];
+}
+
+function getEventModeKey(event) {
+  if (!event) return 'global';
+  if (event.type === 'quiz') return event.quiz_mode === 'competitive' ? 'quiz_competitive' : 'quiz_normal';
+  if (event.type === 'rapid_fire') return event.rapid_fire_style === 'knockout_tournament' ? 'rapid_fire_knockout' : 'rapid_fire_traditional';
+  if (event.type === 'youandme') return 'youandme';
+  if (event.type === 'treasure_hunt') return 'treasure_hunt';
+  return 'global';
+}
+
+function modeLabel(modeKey) {
+  return MODE_OPTIONS.find(m => m.key === modeKey)?.label || modeKey;
+}
+
 const EMPTY_FORM = {
   question: '', optA: '', optB: '', optC: '', optD: '',
   correct: 'A', difficulty: 'medium', explanation: '',
   question_type: 'mcq',
+  mode_tags: ['global'],
   wokwi_url: '',
   sim_instructions: '',
   sim_expected_output: '',
@@ -32,6 +62,20 @@ function Label({ children }) {
 }
 
 function QuestionFields({ fd, setFd, submitLabel, onSubmit }) {
+  const tags = normalizeModeTags(fd.mode_tags);
+  const toggleTag = (tag) => {
+    const set = new Set(tags);
+    if (tag === 'global') {
+      setFd({ ...fd, mode_tags: ['global'] });
+      return;
+    }
+    set.delete('global');
+    if (set.has(tag)) set.delete(tag);
+    else set.add(tag);
+    const next = [...set];
+    setFd({ ...fd, mode_tags: next.length > 0 ? next : ['global'] });
+  };
+
   return (
     <form onSubmit={onSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'flex', gap: 8 }}>
@@ -64,6 +108,35 @@ function QuestionFields({ fd, setFd, submitLabel, onSubmit }) {
         <textarea required rows={3}
           style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: 12, color: 'var(--text-primary)', fontSize: 14, resize: 'none' }}
           value={fd.question} onChange={e => setFd({...fd, question: e.target.value})} />
+      </div>
+
+      <div>
+        <Label>Question Scope Blocks</Label>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+          {MODE_OPTIONS.map((mode) => {
+            const active = tags.includes(mode.key);
+            return (
+              <button
+                key={mode.key}
+                type="button"
+                onClick={() => toggleTag(mode.key)}
+                className="btn-ghost"
+                style={{
+                  justifyContent: 'flex-start',
+                  padding: '8px 10px',
+                  minHeight: 'unset',
+                  fontSize: 11,
+                  borderColor: active ? 'var(--blue)' : 'var(--border)',
+                  background: active ? 'rgba(37,99,235,0.08)' : 'var(--elevated)',
+                  color: active ? 'var(--text-primary)' : 'var(--text-muted)'
+                }}
+              >
+                {active ? <Check size={12} /> : <span style={{ width: 12, height: 12, borderRadius: 3, border: '1px solid var(--border)', display: 'inline-block' }} />}
+                {mode.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {fd.question_type !== 'simulation' && (
@@ -164,8 +237,11 @@ export function AdminQuestions() {
   const [eventQuestions, setEventQuestions]   = useState([]);   // array of question_ids
   const [eventQMeta, setEventQMeta]       = useState([]);   // full records with order_num
   const [tab, setTab]                     = useState('bank');
+  const [creationMethod, setCreationMethod] = useState('manual');
   const [search, setSearch]               = useState('');
   const [filterDiff, setFilterDiff]       = useState('all');
+  const [bankModeFilter, setBankModeFilter] = useState('all');
+  const [activeBankMode, setActiveBankMode] = useState('');
 
   // Edit / View modal
   const [editing, setEditing]             = useState(null);
@@ -181,7 +257,7 @@ export function AdminQuestions() {
   const fetchData = useCallback(async () => {
     const [{ data: qData }, { data: eData }] = await Promise.all([
       supabase.from('question_bank').select('*').order('created_at', { ascending: false }),
-      supabase.from('events').select('id, title, type, status').order('created_at', { ascending: false })
+      supabase.from('events').select('id, title, type, status, quiz_mode, rapid_fire_style').order('created_at', { ascending: false })
     ]);
     if (qData) setQuestions(qData);
     if (eData) setEvents(eData);
@@ -216,18 +292,53 @@ export function AdminQuestions() {
   }, [selectedEventId]);
 
   // ── Filtered Questions ─────────────────────────────────────
-  const filtered = questions.filter(q => {
+  const baseFiltered = questions.filter(q => {
+    const tags = normalizeModeTags(q.tags);
     const matchSearch = q.question.toLowerCase().includes(search.toLowerCase());
     const matchDiff   = filterDiff === 'all' || q.difficulty === filterDiff;
     return matchSearch && matchDiff;
   });
 
+  const modeCardSummaries = MODE_OPTIONS.map(mode => {
+    const count = mode.key === 'global'
+      ? questions.length
+      : questions.filter(q => normalizeModeTags(q.tags).includes(mode.key)).length;
+    return { ...mode, count };
+  });
+
+  const activeModeLabel = modeLabel(activeBankMode || 'global');
+  const bankQuestions = activeBankMode
+    ? baseFiltered.filter(q => {
+        const tags = normalizeModeTags(q.tags);
+        if (activeBankMode === 'global') return true;
+        return tags.includes(activeBankMode);
+      })
+    : [];
+
+  const assignmentFiltered = baseFiltered.filter(q => {
+    const tags = normalizeModeTags(q.tags);
+    if (bankModeFilter === 'all') return true;
+    if (bankModeFilter === 'global') return tags.includes('global');
+    return tags.includes(bankModeFilter) || tags.includes('global');
+  });
+
+  const selectedEvent = events.find(e => e.id === selectedEventId);
+  const selectedModeKey = getEventModeKey(selectedEvent);
+  const exactModeQuestions = assignmentFiltered.filter(q => normalizeModeTags(q.tags).includes(selectedModeKey));
+  const globalQuestions = assignmentFiltered.filter(q => {
+    const tags = normalizeModeTags(q.tags);
+    return tags.includes('global') || tags.length === 0;
+  });
+  const otherModeQuestions = assignmentFiltered.filter(q => {
+    const tags = normalizeModeTags(q.tags);
+    return !tags.includes(selectedModeKey) && !tags.includes('global');
+  });
+
   // ── Create ─────────────────────────────────────────────────
   const handleCreate = async (e) => {
     e.preventDefault();
-    
     let payload;
-    
+
     if (formData.question_type === 'simulation') {
       if (!formData.wokwi_url.trim()) {
         alert('Wokwi embed URL is required for simulation questions.');
@@ -240,6 +351,7 @@ export function AdminQuestions() {
         difficulty: formData.difficulty,
         explanation: formData.explanation || '',
         question_type: 'simulation',
+        tags: normalizeModeTags(formData.mode_tags),
         wokwi_url: formData.wokwi_url.trim(),
         sim_instructions: formData.sim_instructions.trim(),
         sim_expected_output: formData.sim_expected_output.trim(),
@@ -256,10 +368,11 @@ export function AdminQuestions() {
         difficulty: formData.difficulty,
         explanation: formData.explanation,
         question_type: 'mcq',
+        tags: normalizeModeTags(formData.mode_tags),
         created_by: user.id,
       };
     }
-    
+
     const { error } = await supabase.from('question_bank').insert([payload]);
     if (!error) {
       setFormData(EMPTY_FORM);
@@ -285,14 +398,15 @@ export function AdminQuestions() {
       sim_instructions: q.sim_instructions || '',
       sim_expected_output: q.sim_expected_output || '',
       sim_marks: q.sim_marks || 10,
+      mode_tags: normalizeModeTags(q.tags),
     });
   };
 
   const handleEditSave = async (e) => {
     e.preventDefault();
-    
+
     let payload;
-    
+
     if (editForm.question_type === 'simulation') {
       if (!editForm.wokwi_url.trim()) {
         alert('Wokwi embed URL is required for simulation questions.');
@@ -305,6 +419,7 @@ export function AdminQuestions() {
         difficulty: editForm.difficulty,
         explanation: editForm.explanation || '',
         question_type: 'simulation',
+        tags: normalizeModeTags(editForm.mode_tags),
         wokwi_url: editForm.wokwi_url.trim(),
         sim_instructions: editForm.sim_instructions.trim(),
         sim_expected_output: editForm.sim_expected_output.trim(),
@@ -320,9 +435,10 @@ export function AdminQuestions() {
         difficulty: editForm.difficulty,
         explanation: editForm.explanation,
         question_type: 'mcq',
+        tags: normalizeModeTags(editForm.mode_tags),
       };
     }
-    
+
     const { error } = await supabase.from('question_bank').update(payload).eq('id', editing.id);
     if (!error) { setEditing(null); fetchData(); }
     else alert(error.message);
@@ -372,6 +488,7 @@ export function AdminQuestions() {
             correct_answer: idx >= 0 ? options[idx] : options[0],
             difficulty:    row.difficulty || 'medium',
             explanation:   row.explanation || '',
+            tags:          normalizeModeTags((row.modes || '').split(',').map(s => s.trim())),
             created_by:    user.id
           };
         });
@@ -382,8 +499,6 @@ export function AdminQuestions() {
     });
     e.target.value = '';
   };
-
-  const selectedEvent = events.find(e => e.id === selectedEventId);
 
   return (
     <div className="p-6 md:p-10 max-w-7xl mx-auto space-y-8 pb-20">
@@ -428,63 +543,150 @@ export function AdminQuestions() {
       {/* ── BANK TAB ── */}
       {tab === 'bank' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-
-          {/* Toolbar */}
-          <div style={{ display: 'flex', gap: 16, alignItems: 'center', background: 'var(--elevated)', padding: '16px 24px', borderRadius: 16, border: '1px solid var(--border)' }}>
-            <div style={{ position: 'relative', flex: 1 }}>
-              <Search size={14} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-              <input placeholder="Filter global assets..."
-                style={{ width: '100%', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 16px 10px 42px', color: 'var(--text-primary)', fontSize: 13 }}
-                value={search} onChange={e => setSearch(e.target.value)} />
-            </div>
-            <select style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 16px', color: 'var(--text-primary)', fontSize: 12, fontWeight: 700 }}
-              value={filterDiff} onChange={e => setFilterDiff(e.target.value)}>
-              <option value="all">Complexity: All</option>
-              <option value="easy">Easy</option>
-              <option value="medium">Medium</option>
-              <option value="hard">Hard</option>
-            </select>
-            <div style={{ height: 24, width: 1, background: 'var(--border)' }} />
-            <div style={{ display: 'flex', gap: 12 }}>
-              <button onClick={() => fileInputRef.current.click()} className="btn-ghost" style={{ padding: '10px 16px', fontSize: 11 }}>
-                <Upload size={14} /> Import Protocol
-              </button>
-              <input type="file" accept=".csv" className="hidden" ref={fileInputRef} onChange={handleFileUpload} />
-              <button onClick={() => setShowCreateForm(f => !f)} className="btn-primary" style={{ padding: '10px 20px', background: 'var(--blue)', color: '#000', fontSize: 11 }}>
-                <Plus size={14} /> Initialize Asset
-              </button>
-            </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 12 }}>
+            {modeCardSummaries.map(mode => {
+              const active = activeBankMode === mode.key;
+              return (
+                <button
+                  key={mode.key}
+                  type="button"
+                  onClick={() => {
+                    setActiveBankMode(mode.key);
+                    setBankModeFilter(mode.key);
+                  }}
+                  className="btn-ghost"
+                  style={{
+                    minHeight: 74,
+                    justifyContent: 'space-between',
+                    alignItems: 'flex-start',
+                    flexDirection: 'column',
+                    border: active ? '1px solid var(--blue)' : '1px solid var(--border)',
+                    background: active ? 'rgba(37,99,235,0.1)' : 'var(--surface)',
+                    color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
+                    padding: '12px 14px'
+                  }}
+                >
+                  <span style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{mode.label}</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: active ? 'var(--blue)' : 'var(--text-muted)' }}>{mode.count} questions</span>
+                </button>
+              );
+            })}
           </div>
 
-          {/* Create Form */}
-          {showCreateForm && (
+          {activeBankMode && (
+            <div style={{ display: 'flex', gap: 16, alignItems: 'center', background: 'var(--elevated)', padding: '16px 24px', borderRadius: 16, border: '1px solid var(--border)' }}>
+              <div style={{ position: 'relative', flex: 1 }}>
+                <Search size={14} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                <input placeholder={`Filter ${activeModeLabel} questions...`}
+                  style={{ width: '100%', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 16px 10px 42px', color: 'var(--text-primary)', fontSize: 13 }}
+                  value={search} onChange={e => setSearch(e.target.value)} />
+              </div>
+              <select style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 16px', color: 'var(--text-primary)', fontSize: 12, fontWeight: 700 }}
+                value={filterDiff} onChange={e => setFilterDiff(e.target.value)}>
+                <option value="all">Complexity: All</option>
+                <option value="easy">Easy</option>
+                <option value="medium">Medium</option>
+                <option value="hard">Hard</option>
+              </select>
+              <button onClick={() => { setActiveBankMode(''); setShowCreateForm(false); }} className="btn-ghost" style={{ padding: '10px 14px', fontSize: 11 }}>
+                Back To Modes
+              </button>
+              <div style={{ height: 24, width: 1, background: 'var(--border)' }} />
+              <div style={{ display: 'flex', gap: 12 }}>
+                <button onClick={() => fileInputRef.current.click()} className="btn-ghost" style={{ padding: '10px 16px', fontSize: 11 }}>
+                  <Upload size={14} /> Import Protocol
+                </button>
+                <input type="file" accept=".csv" className="hidden" ref={fileInputRef} onChange={handleFileUpload} />
+                <button onClick={() => {
+                  setShowCreateForm(f => {
+                    const next = !f;
+                    if (next) {
+                      setCreationMethod('manual');
+                      setFormData(prev => ({
+                        ...EMPTY_FORM,
+                        mode_tags: activeBankMode && activeBankMode !== 'global' ? [activeBankMode] : ['global'],
+                        difficulty: prev.difficulty || EMPTY_FORM.difficulty,
+                      }));
+                    }
+                    return next;
+                  });
+                }} className="btn-primary" style={{ padding: '10px 20px', background: 'var(--blue)', color: '#000', fontSize: 11 }}>
+                  <Plus size={14} /> Initialize Asset
+                </button>
+              </div>
+            </div>
+          )}
+
+          {!activeBankMode && (
+            <div style={{ padding: 44, textAlign: 'center', background: 'var(--surface)', border: '1px dashed var(--border)', borderRadius: 16 }}>
+              <p style={{ color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase', fontSize: 12 }}>
+                Select a mode block to open only related questions.
+              </p>
+            </div>
+          )}
+
+          {activeBankMode && showCreateForm && (
             <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderLeft: '4px solid var(--blue)', borderRadius: 16, padding: 32 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 32 }}>
-                <h3 style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>New Asset Entry</h3>
+                <h3 style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>New Asset Entry ({activeModeLabel})</h3>
                 <button onClick={() => setShowCreateForm(false)} style={{ color: 'var(--text-muted)' }} className="hover-white">
                   <X size={20} />
                 </button>
               </div>
-              <QuestionFields fd={formData} setFd={setFormData} submitLabel="Commit to Registry" onSubmit={handleCreate} />
+              <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+                <button
+                  type="button"
+                  onClick={() => setCreationMethod('manual')}
+                  className="btn-ghost"
+                  style={{ background: creationMethod === 'manual' ? 'var(--blue)' : 'var(--elevated)', color: creationMethod === 'manual' ? '#fff' : 'var(--text-muted)' }}
+                >
+                  Manual Entry
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCreationMethod('csv')}
+                  className="btn-ghost"
+                  style={{ background: creationMethod === 'csv' ? 'var(--blue)' : 'var(--elevated)', color: creationMethod === 'csv' ? '#fff' : 'var(--text-muted)' }}
+                >
+                  CSV Import
+                </button>
+              </div>
+
+              {creationMethod === 'manual' ? (
+                <QuestionFields fd={formData} setFd={setFormData} submitLabel="Commit to Registry" onSubmit={handleCreate} />
+              ) : (
+                <div style={{ background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 12, padding: 16 }}>
+                  <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 12 }}>
+                    Upload CSV with columns: <b>question</b>, <b>option_a</b>, <b>option_b</b>, <b>option_c</b>, <b>option_d</b>, <b>correct</b>, <b>difficulty</b>, <b>explanation</b>, <b>modes</b>.
+                  </p>
+                  <p style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 16 }}>
+                    Example <b>modes</b>: <i>global</i> or <i>quiz_normal,rapid_fire_traditional</i>
+                  </p>
+                  <button onClick={() => fileInputRef.current.click()} className="btn-primary" style={{ background: 'var(--green)', color: '#000' }}>
+                    <Upload size={14} /> Select CSV File
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
-          {/* Question List */}
-          <div style={{ display: 'grid', gap: 16 }}>
-            {filtered.length === 0 && (
-              <div style={{ padding: 128, textAlign: 'center', background: 'var(--surface)', border: '1px solid var(--border)', borderStyle: 'dashed', borderRadius: 16 }}>
-                <Search size={48} style={{ color: 'var(--text-muted)', opacity: 0.2, margin: '0 auto 24px' }} />
-                <p style={{ color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', fontSize: 12 }}>Registry search yielded zero results.</p>
-              </div>
-            )}
-            {filtered.map((q, idx) => (
-              <QuestionCard key={q.id} q={q} idx={idx}
-                onEdit={() => openEdit(q)}
-                onView={() => setViewing(q)}
-                onDelete={() => handleDelete(q.id)}
-              />
-            ))}
-          </div>
+          {activeBankMode && (
+            <div style={{ display: 'grid', gap: 16 }}>
+              {bankQuestions.length === 0 && (
+                <div style={{ padding: 128, textAlign: 'center', background: 'var(--surface)', border: '1px solid var(--border)', borderStyle: 'dashed', borderRadius: 16 }}>
+                  <Search size={48} style={{ color: 'var(--text-muted)', opacity: 0.2, margin: '0 auto 24px' }} />
+                  <p style={{ color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', fontSize: 12 }}>No questions found for this mode block.</p>
+                </div>
+              )}
+              {bankQuestions.map((q, idx) => (
+                <QuestionCard key={q.id} q={q} idx={idx}
+                  onEdit={() => openEdit(q)}
+                  onView={() => setViewing(q)}
+                  onDelete={() => handleDelete(q.id)}
+                />
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -558,31 +760,62 @@ export function AdminQuestions() {
                   </div>
                 </div>
 
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+                  <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Target Block:</span>
+                  <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--blue)', background: 'rgba(37,99,235,0.08)', border: '1px solid rgba(37,99,235,0.2)', padding: '2px 8px', borderRadius: 999 }}>
+                    {modeLabel(selectedModeKey)}
+                  </span>
+                </div>
+
                 <div style={{ display: 'grid', gap: 12 }}>
-                  {filtered.map(q => {
-                    const assigned = eventQuestions.includes(q.id);
-                    return (
-                      <div key={q.id}
-                        onClick={() => toggleEventQuestion(q.id)}
-                        style={{
-                          padding: '16px 24px', borderRadius: 12, border: '1px solid var(--border)', background: assigned ? 'rgba(59,130,246,0.06)' : 'var(--surface)',
-                          borderColor: assigned ? 'var(--blue)' : 'var(--border)', cursor: 'pointer', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: 20
-                        }}
-                        className={assigned ? '' : 'hover-elevated'}
-                      >
-                        <div style={{ width: 24, height: 24, borderRadius: 6, border: '2px solid var(--border)', background: assigned ? 'var(--blue)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          {assigned && <Check size={14} style={{ color: '#000' }} />}
+                  {[
+                    { title: 'Exact Mode Match', subtitle: modeLabel(selectedModeKey), items: exactModeQuestions, tone: 'rgba(37,99,235,0.12)' },
+                    { title: 'Global Shared Block', subtitle: 'Reusable in all event types', items: globalQuestions, tone: 'rgba(16,185,129,0.12)' },
+                    { title: 'Other Mode Blocks', subtitle: 'Use only if needed', items: otherModeQuestions, tone: 'rgba(245,158,11,0.12)' },
+                  ].map(section => (
+                    <div key={section.title} style={{ border: '1px solid var(--border)', borderRadius: 12, background: 'var(--surface)', overflow: 'hidden' }}>
+                      <div style={{ padding: '10px 14px', background: section.tone, borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                          <p style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-primary)', textTransform: 'uppercase' }}>{section.title}</p>
+                          <p style={{ fontSize: 10, color: 'var(--text-muted)' }}>{section.subtitle}</p>
                         </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <p style={{ fontSize: 14, fontWeight: 700, color: assigned ? 'var(--text-primary)' : 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{q.question}</p>
-                          <div style={{ display: 'flex', gap: 12, marginTop: 4 }}>
-                            <span style={{ fontSize: 9, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{q.difficulty}</span>
-                            <span style={{ fontSize: 9, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{q.question_type}</span>
-                          </div>
-                        </div>
+                        <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-secondary)' }}>{section.items.length}</span>
                       </div>
-                    );
-                  })}
+
+                      <div style={{ display: 'grid', gap: 10, padding: 12 }}>
+                        {section.items.length === 0 && (
+                          <p style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic', padding: '10px 4px' }}>No questions in this block.</p>
+                        )}
+                        {section.items.map(q => {
+                          const assigned = eventQuestions.includes(q.id);
+                          return (
+                            <div key={q.id}
+                              onClick={() => toggleEventQuestion(q.id)}
+                              style={{
+                                padding: '14px 16px', borderRadius: 10, border: '1px solid var(--border)', background: assigned ? 'rgba(59,130,246,0.06)' : 'var(--elevated)',
+                                borderColor: assigned ? 'var(--blue)' : 'var(--border)', cursor: 'pointer', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: 14
+                              }}
+                              className={assigned ? '' : 'hover-elevated'}
+                            >
+                              <div style={{ width: 20, height: 20, borderRadius: 5, border: '2px solid var(--border)', background: assigned ? 'var(--blue)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                {assigned && <Check size={12} style={{ color: '#000' }} />}
+                              </div>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <p style={{ fontSize: 13, fontWeight: 700, color: assigned ? 'var(--text-primary)' : 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{q.question}</p>
+                                <div style={{ display: 'flex', gap: 10, marginTop: 4, flexWrap: 'wrap' }}>
+                                  <span style={{ fontSize: 9, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{q.difficulty}</span>
+                                  <span style={{ fontSize: 9, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{q.question_type}</span>
+                                  {normalizeModeTags(q.tags).slice(0, 2).map(t => (
+                                    <span key={t} style={{ fontSize: 9, fontWeight: 800, color: 'var(--blue)', textTransform: 'uppercase' }}>{t}</span>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
@@ -665,6 +898,11 @@ function QuestionCard({ q, idx, onEdit, onView, onDelete }) {
             ) : (
               <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{q.options.length} Options</span>
             )}
+            {normalizeModeTags(q.tags).slice(0, 3).map(tag => (
+              <span key={tag} style={{ fontSize: 9, fontWeight: 800, padding: '2px 8px', borderRadius: 4, border: '1px solid rgba(37,99,235,0.2)', color: 'var(--blue)', background: 'rgba(37,99,235,0.08)', textTransform: 'uppercase' }}>
+                {tag}
+              </span>
+            ))}
           </div>
         </div>
         <div style={{ display: 'flex', gap: 4 }}>

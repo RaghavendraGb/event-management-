@@ -69,7 +69,12 @@ export function Lobby() {
 
       // Feature 2: Preload questions into Zustand store while waiting in lobby
       // Coding events have no event_questions — skip this fetch for them
-      if (ticketData.events.status === 'upcoming' && ticketData.events.type !== 'coding_challenge') {
+      if (
+        ticketData.events.status === 'upcoming' &&
+        ticketData.events.type !== 'coding_challenge' &&
+        ticketData.events.type !== 'treasure_hunt' &&
+        !(ticketData.events.type === 'quiz' && ticketData.events.quiz_mode === 'competitive')
+      ) {
         supabase
           .from('event_questions')
           .select('*, question_bank(*)')

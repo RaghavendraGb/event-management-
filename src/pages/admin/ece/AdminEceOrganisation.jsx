@@ -42,20 +42,49 @@ export function AdminEceOrganisation() {
   const [editCreatorId, setEditCreatorId] = useState(null);
   const [savingCreator, setSavingCreator] = useState(false);
   const [deletingCreatorId, setDeletingCreatorId] = useState(null);
+  const [opError, setOpError] = useState('');
+
+  const clearOpError = () => setOpError('');
+
+  const normalizeText = (value) => String(value || '').trim();
+
+  const safeDeleteCloudinary = async (publicId, resourceType = 'image') => {
+    if (!publicId) return;
+    try {
+      await deleteFromCloudinary(publicId, resourceType);
+    } catch {
+      // Keep UX resilient even if remote file cleanup fails.
+    }
+  };
 
   const loadData = async () => {
-    const [orgRes, creatorsRes, facultyRes] = await Promise.all([
-      supabase.from('ece_organisation').select('*').limit(1).single(),
-      supabase.from('ece_creators').select('*').order('order_num'),
-      supabase.from('ece_faculty').select('*').order('order_num'),
-    ]);
-    if (orgRes.data) {
-      setOrgId(orgRes.data.id);
-      setOrgForm({ college_name: orgRes.data.college_name, department: orgRes.data.department, hod_name: orgRes.data.hod_name, hod_message: orgRes.data.hod_message || '', acknowledgements: orgRes.data.acknowledgements || '' });
+    setLoading(true);
+    clearOpError();
+    try {
+      const [orgRes, creatorsRes, facultyRes] = await Promise.all([
+        supabase.from('ece_organisation').select('*').limit(1).maybeSingle(),
+        supabase.from('ece_creators').select('*').order('order_num'),
+        supabase.from('ece_faculty').select('*').order('order_num'),
+      ]);
+
+      if (orgRes.error && orgRes.error.code !== 'PGRST116') {
+        throw new Error(orgRes.error.message || 'Failed loading organisation data');
+      }
+      if (creatorsRes.error) throw new Error(creatorsRes.error.message || 'Failed loading creators');
+      if (facultyRes.error) throw new Error(facultyRes.error.message || 'Failed loading faculty');
+
+      if (orgRes.data) {
+        setOrgId(orgRes.data.id);
+        setOrgForm({ college_name: orgRes.data.college_name, department: orgRes.data.department, hod_name: orgRes.data.hod_name, hod_message: orgRes.data.hod_message || '', acknowledgements: orgRes.data.acknowledgements || '' });
+      }
+
+      setCreators(creatorsRes.data || []);
+      setFaculty(facultyRes.data || []);
+    } catch (err) {
+      setOpError(err.message || 'Unable to load organisation data.');
+    } finally {
+      setLoading(false);
     }
-    setCreators(creatorsRes.data || []);
-    setFaculty(facultyRes.data || []);
-    setLoading(false);
   };
 
   useEffect(() => {
@@ -67,74 +96,135 @@ export function AdminEceOrganisation() {
 
   // -- Seed default creators if none exist --
   const handleSeedCreators = async () => {
-    await supabase.from('ece_creators').insert(DEFAULT_CREATORS);
-    loadData();
+    clearOpError();
+    const { error } = await supabase.from('ece_creators').insert(DEFAULT_CREATORS);
+    if (error) {
+      setOpError(error.message || 'Unable to seed default creators.');
+      return;
+    }
+    await loadData();
   };
 
   // --- Org save ---
   const handleSaveOrg = async (e) => {
     e.preventDefault();
     setSavingOrg(true);
-    if (orgId) {
-      await supabase.from('ece_organisation').update({ ...orgForm, updated_at: new Date().toISOString() }).eq('id', orgId);
-    } else {
-      const { data } = await supabase.from('ece_organisation').insert(orgForm).select().single();
-      setOrgId(data?.id);
+    clearOpError();
+    try {
+      if (orgId) {
+        const { error } = await supabase.from('ece_organisation').update({ ...orgForm, updated_at: new Date().toISOString() }).eq('id', orgId);
+        if (error) throw error;
+      } else {
+        const { data, error } = await supabase.from('ece_organisation').insert(orgForm).select().single();
+        if (error) throw error;
+        setOrgId(data?.id);
+      }
+      await loadData();
+    } catch (err) {
+      setOpError(err.message || 'Unable to save organisation details.');
+    } finally {
+      setSavingOrg(false);
     }
-    setSavingOrg(false);
-    loadData();
   };
 
   // --- Faculty CRUD ---
   const handleFacultySubmit = async (e) => {
     e.preventDefault();
     setSavingFaculty(true);
-    const payload = { ...facultyForm, name: facultyForm.name.trim(), order_num: Number(facultyForm.order_num) || 0 };
-    if (editFacultyId) {
-      await supabase.from('ece_faculty').update(payload).eq('id', editFacultyId);
-    } else {
-      await supabase.from('ece_faculty').insert(payload);
+    clearOpError();
+    const payload = {
+      ...facultyForm,
+      name: normalizeText(facultyForm.name),
+      designation: normalizeText(facultyForm.designation),
+      quote: normalizeText(facultyForm.quote),
+      photo_url: normalizeText(facultyForm.photo_url) || null,
+      photo_public_id: normalizeText(facultyForm.photo_public_id) || null,
+      order_num: Number(facultyForm.order_num) || 0,
+    };
+    try {
+      if (editFacultyId) {
+        const { error } = await supabase.from('ece_faculty').update(payload).eq('id', editFacultyId);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('ece_faculty').insert(payload);
+        if (error) throw error;
+      }
+      setShowFacultyForm(false);
+      setEditFacultyId(null);
+      setFacultyForm(EMPTY_FACULTY);
+      await loadData();
+    } catch (err) {
+      setOpError(err.message || 'Unable to save faculty profile.');
+    } finally {
+      setSavingFaculty(false);
     }
-    setSavingFaculty(false);
-    setShowFacultyForm(false);
-    setEditFacultyId(null);
-    setFacultyForm(EMPTY_FACULTY);
-    loadData();
   };
 
   const handleDeleteFaculty = async (f) => {
     if (!window.confirm(`Delete faculty "${f.name}"?`)) return;
     setDeletingFacultyId(f.id);
-    if (f.photo_public_id) await deleteFromCloudinary(f.photo_public_id, 'image');
-    await supabase.from('ece_faculty').delete().eq('id', f.id);
-    setDeletingFacultyId(null);
-    loadData();
+    clearOpError();
+    try {
+      await safeDeleteCloudinary(f.photo_public_id, 'image');
+      const { error } = await supabase.from('ece_faculty').delete().eq('id', f.id);
+      if (error) throw error;
+      await loadData();
+    } catch (err) {
+      setOpError(err.message || 'Unable to delete faculty profile.');
+    } finally {
+      setDeletingFacultyId(null);
+    }
   };
 
   // --- Creator CRUD ---
   const handleCreatorSubmit = async (e) => {
     e.preventDefault();
     setSavingCreator(true);
-    const payload = { ...creatorForm, name: creatorForm.name.trim(), order_num: Number(creatorForm.order_num) || 0 };
-    if (editCreatorId) {
-      await supabase.from('ece_creators').update(payload).eq('id', editCreatorId);
-    } else {
-      await supabase.from('ece_creators').insert(payload);
+    clearOpError();
+    const payload = {
+      ...creatorForm,
+      name: normalizeText(creatorForm.name),
+      role: normalizeText(creatorForm.role),
+      instagram: normalizeText(creatorForm.instagram) || null,
+      github: normalizeText(creatorForm.github) || null,
+      phone: normalizeText(creatorForm.phone) || null,
+      photo_url: normalizeText(creatorForm.photo_url) || null,
+      photo_public_id: normalizeText(creatorForm.photo_public_id) || null,
+      order_num: Number(creatorForm.order_num) || 0,
+    };
+    try {
+      if (editCreatorId) {
+        const { error } = await supabase.from('ece_creators').update(payload).eq('id', editCreatorId);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('ece_creators').insert(payload);
+        if (error) throw error;
+      }
+      setShowCreatorForm(false);
+      setEditCreatorId(null);
+      setCreatorForm(EMPTY_CREATOR);
+      await loadData();
+    } catch (err) {
+      setOpError(err.message || 'Unable to save creator profile.');
+    } finally {
+      setSavingCreator(false);
     }
-    setSavingCreator(false);
-    setShowCreatorForm(false);
-    setEditCreatorId(null);
-    setCreatorForm(EMPTY_CREATOR);
-    loadData();
   };
 
   const handleDeleteCreator = async (c) => {
     if (!window.confirm(`Delete creator "${c.name}"?`)) return;
     setDeletingCreatorId(c.id);
-    if (c.photo_public_id) await deleteFromCloudinary(c.photo_public_id, 'image');
-    await supabase.from('ece_creators').delete().eq('id', c.id);
-    setDeletingCreatorId(null);
-    loadData();
+    clearOpError();
+    try {
+      await safeDeleteCloudinary(c.photo_public_id, 'image');
+      const { error } = await supabase.from('ece_creators').delete().eq('id', c.id);
+      if (error) throw error;
+      await loadData();
+    } catch (err) {
+      setOpError(err.message || 'Unable to delete creator profile.');
+    } finally {
+      setDeletingCreatorId(null);
+    }
   };
 
   if (loading) {
@@ -147,6 +237,12 @@ export function AdminEceOrganisation() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-6 space-y-12">
+      {opError && (
+        <div style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.4)', color: '#fecaca', borderRadius: 10, padding: '10px 12px', fontSize: 12 }}>
+          {opError}
+        </div>
+      )}
+
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 40 }}>
         <div>
@@ -228,8 +324,15 @@ export function AdminEceOrganisation() {
               <CloudinaryUpload
                 folder="ece_hub/faculty" resourceType="image" accept="image/*" label="Select High-Res Portrait"
                 currentUrl={facultyForm.photo_url} currentPublicId={facultyForm.photo_public_id}
-                onUpload={(url, pid) => setFacultyForm((f) => ({ ...f, photo_url: url, photo_public_id: pid }))}
-                onDelete={async (pid) => { await deleteFromCloudinary(pid, 'image'); setFacultyForm((f) => ({ ...f, photo_url: '', photo_public_id: '' })); }}
+                onUpload={async (url, pid) => {
+                  if (facultyForm.photo_public_id && facultyForm.photo_public_id !== pid) {
+                    await safeDeleteCloudinary(facultyForm.photo_public_id, 'image');
+                  }
+                  setFacultyForm((f) => ({ ...f, photo_url: url, photo_public_id: pid }));
+                }}
+                onDelete={async () => {
+                  setFacultyForm((f) => ({ ...f, photo_url: '', photo_public_id: '' }));
+                }}
               />
             </div>
 
@@ -330,8 +433,15 @@ export function AdminEceOrganisation() {
               <CloudinaryUpload
                 folder="ece_hub/creators" resourceType="image" accept="image/*" label="Select High-Res Identity Photo"
                 currentUrl={creatorForm.photo_url} currentPublicId={creatorForm.photo_public_id}
-                onUpload={(url, pid) => setCreatorForm((f) => ({ ...f, photo_url: url, photo_public_id: pid }))}
-                onDelete={async (pid) => { await deleteFromCloudinary(pid, 'image'); setCreatorForm((f) => ({ ...f, photo_url: '', photo_public_id: '' })); }}
+                onUpload={async (url, pid) => {
+                  if (creatorForm.photo_public_id && creatorForm.photo_public_id !== pid) {
+                    await safeDeleteCloudinary(creatorForm.photo_public_id, 'image');
+                  }
+                  setCreatorForm((f) => ({ ...f, photo_url: url, photo_public_id: pid }));
+                }}
+                onDelete={async () => {
+                  setCreatorForm((f) => ({ ...f, photo_url: '', photo_public_id: '' }));
+                }}
               />
             </div>
 

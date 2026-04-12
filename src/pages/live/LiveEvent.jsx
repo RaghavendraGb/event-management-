@@ -5,7 +5,10 @@ import { useStore } from '../../store';
 import { Clock, AlertOctagon, ShieldAlert, Wifi, WifiOff } from 'lucide-react';
 
 import { NormalQuizMode } from '../../components/live/NormalQuizMode';
+import { CompetitiveQuizMode } from '../../components/live/CompetitiveQuizMode';
 import { RapidFireMode } from '../../components/live/RapidFireMode';
+import { TournamentKnockout } from '../../components/live/TournamentKnockout';
+import YouAndMeMatch from '../../components/live/YouAndMeMatch';
 import { TreasureHuntMode } from '../../components/live/TreasureHuntMode';
 import { SimulationMode } from '../../components/live/SimulationMode';
 import { LiveLeaderboard } from '../../components/live/LiveLeaderboard';
@@ -69,6 +72,7 @@ export function LiveEvent() {
   const [simDone, setSimDone] = useState(false);
   const [hasPendingSync, setHasPendingSync] = useState(false);
   const [submitQueued, setSubmitQueued] = useState(false);
+  const [treasureGlobalEnded, setTreasureGlobalEnded] = useState(false);
 
   // ── H: Realtime connection status for network-aware UI ────────
   const [realtimeStatus, setRealtimeStatus] = useState('connected');
@@ -140,9 +144,9 @@ export function LiveEvent() {
         // ── G: try/catch on all fetches ──
         const { data: eData, error: eErr } = await supabase.from('events').select('*').eq('id', id).single();
         if (eErr || !eData) throw new Error(eErr?.message || 'Event not found');
-        if (eData.status === 'ended') return navigate(`/results/${id}`);
+        if (eData.status === 'ended' && eData.type !== 'treasure_hunt') return navigate(`/results/${id}`);
         // Block exam entry if results have already been announced
-        if (eData.results_announced === true) return navigate(`/results/${id}`);
+        if (eData.results_announced === true && eData.type !== 'treasure_hunt') return navigate(`/results/${id}`);
         // Redirect coding events to their dedicated coding arena
         if (eData.type === 'coding_challenge') return navigate(`/live-coding/${id}`);
         if (isMountedRef.current) setEventData(eData);
@@ -163,7 +167,9 @@ export function LiveEvent() {
 
         // Feature 2: Use preloaded questions from Lobby if available for this event
         let qData;
-        if (preloadedQuestions?.eventId === id && preloadedQuestions?.questions?.length > 0) {
+        if (eData.type === 'treasure_hunt' || (eData.type === 'quiz' && eData.quiz_mode === 'competitive')) {
+          qData = [];
+        } else if (preloadedQuestions?.eventId === id && preloadedQuestions?.questions?.length > 0) {
           console.log('✅ USING_PRELOADED_QUESTIONS', preloadedQuestions.questions.length);
           qData = preloadedQuestions.questions;
           clearPreloadedQuestions();
@@ -192,7 +198,7 @@ export function LiveEvent() {
           console.error('❌ PARTICIPATION_ERROR', pErr);
           return navigate(`/events/${id}`);
         }
-        if (pData.status === 'submitted') return navigate(`/results/${id}`);
+        if (pData.status === 'submitted' && eData.type !== 'treasure_hunt') return navigate(`/results/${id}`);
 
         participationIdRef.current = pData.id;
         if (isMountedRef.current) {
@@ -325,6 +331,10 @@ export function LiveEvent() {
   // ── FIX #4: Anti-cheat uses ref for violations ───────────────
   useEffect(() => {
     if (!hasStarted || isSubmitting) return;
+    if (eventData?.type === 'quiz' && eventData?.quiz_mode === 'competitive') return;
+    if (eventData?.type === 'treasure_hunt') return;
+    if (eventData?.type === 'youandme') return;
+    if (eventData?.type === 'rapid_fire' && eventData?.rapid_fire_style === 'knockout_tournament') return;
 
     const preventDefault = (e) => e.preventDefault();
     document.addEventListener('contextmenu', preventDefault);
@@ -367,7 +377,7 @@ export function LiveEvent() {
       document.removeEventListener('paste', preventDefault);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [hasStarted, isSubmitting, forceCheatSubmission]);
+  }, [hasStarted, isSubmitting, forceCheatSubmission, eventData?.type, eventData?.quiz_mode, eventData?.rapid_fire_style]);
 
   // ── 3. Offline-first Sync Mechanism ─────────────────────────
   const flushPendingSubmission = useCallback(async () => {
@@ -483,6 +493,10 @@ export function LiveEvent() {
         event: 'UPDATE', schema: 'public', table: 'events', filter: `id=eq.${id}`
       }, (payload) => {
         if (payload.new.status === 'ended') {
+          if (eventData?.type === 'treasure_hunt') {
+            if (isMountedRef.current) setTreasureGlobalEnded(true);
+            return;
+          }
           forceCheatSubmission();
           return;
         }
@@ -500,7 +514,13 @@ export function LiveEvent() {
           if (wasDisconnectedRef.current) {
             wasDisconnectedRef.current = false;
             supabase.from('events').select('status').eq('id', id).single().then(({ data }) => {
-              if (data?.status === 'ended') forceCheatSubmission();
+              if (data?.status === 'ended') {
+                if (eventData?.type === 'treasure_hunt') {
+                  if (isMountedRef.current) setTreasureGlobalEnded(true);
+                  return;
+                }
+                forceCheatSubmission();
+              }
             });
           }
         }
@@ -526,7 +546,21 @@ export function LiveEvent() {
 
       if (distance <= 0) {
         clearInterval(interval);
-        if (!isSubmittingRef.current) submitEvent();
+        if (eventData?.type === 'treasure_hunt' || (eventData?.type === 'quiz' && eventData?.quiz_mode === 'competitive')) {
+          if (isMountedRef.current) {
+            setTimeLeftStr('00:00');
+            patchLiveEventRuntime({ timeLeftStr: '00:00' });
+          }
+        } else if (eventData?.type === 'quiz' && eventData?.quiz_mode !== 'competitive') {
+          // Standard quiz should not force-submit unexpectedly on timer drift/misconfigured end_at.
+          // Let participant complete review and submit manually.
+          if (isMountedRef.current) {
+            setTimeLeftStr('Time up - submit when ready');
+            patchLiveEventRuntime({ timeLeftStr: 'Time up - submit when ready' });
+          }
+        } else if (!isSubmittingRef.current) {
+          submitEvent();
+        }
       } else {
         const h = Math.floor(distance / (1000 * 60 * 60));
         const m = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
@@ -545,13 +579,18 @@ export function LiveEvent() {
   // ── Feature 4: Soft lock — beforeunload when event is active ──
   useEffect(() => {
     if (!hasStarted || isSubmitting) return;
+    if (eventData?.type === 'quiz' && eventData?.quiz_mode === 'competitive') return;
+    if (eventData?.type === 'treasure_hunt') return;
+    if (eventData?.type === 'youandme') return;
+    if (eventData?.type === 'rapid_fire' && eventData?.rapid_fire_style === 'knockout_tournament') return;
+
     const handleBeforeUnload = (e) => {
       e.preventDefault();
       e.returnValue = '';
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [hasStarted, isSubmitting]);
+  }, [hasStarted, isSubmitting, eventData?.type, eventData?.quiz_mode, eventData?.rapid_fire_style]);
 
   // Feature 1: stable callback for NormalQuizMode to report current question index
   // MUST be declared here (top-level hook, before all conditional returns)
@@ -596,8 +635,15 @@ export function LiveEvent() {
     </div>
   );
 
+  const type = eventData?.type;
+  const isRealtimeManagedMode =
+    type === 'treasure_hunt' ||
+    (type === 'quiz' && eventData?.quiz_mode === 'competitive') ||
+    type === 'youandme' ||
+    (type === 'rapid_fire' && eventData?.rapid_fire_style === 'knockout_tournament');
+
   // FATAL CHEAT SCREEN
-  if (violations >= 3) {
+  if (!isRealtimeManagedMode && violations >= 3) {
     return (
       <div style={{ minHeight: '100dvh', background: 'var(--bg)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, textAlign: 'center' }}>
         <ShieldAlert size={80} style={{ color: 'var(--red)', marginBottom: 24 }} />
@@ -613,7 +659,7 @@ export function LiveEvent() {
   }
 
   // Pre-Start Lock Screen
-  if (!hasStarted) {
+  if (!isRealtimeManagedMode && !hasStarted) {
     return (
       <div style={{ minHeight: '100dvh', background: 'var(--bg)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, textAlign: 'center' }}>
         <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '40px 32px', maxWidth: 520, width: '100%' }}>
@@ -640,9 +686,27 @@ export function LiveEvent() {
   }
 
   // ── MAIN COMPETITION ENGINE ───────────────────────────────────
-  const type = eventData?.type;
 
   const renderMode = () => {
+    if (type === 'youandme') {
+      return (
+        <YouAndMeMatch
+          eventId={id}
+          userId={user?.id}
+          opponentId={eventData?.opponent_id}
+          onSubmit={submitEvent}
+        />
+      );
+    }
+    if (type === 'rapid_fire' && eventData?.rapid_fire_style === 'knockout_tournament') {
+      return (
+        <TournamentKnockout
+          eventId={id}
+          userId={user?.id}
+          onSubmit={submitEvent}
+        />
+      );
+    }
     if (type === 'rapid_fire') {
       return (
         <RapidFireMode
@@ -656,14 +720,14 @@ export function LiveEvent() {
         />
       );
     }
+    if (type === 'quiz' && eventData?.quiz_mode === 'competitive') {
+      return <CompetitiveQuizMode eventId={id} />;
+    }
     if (type === 'treasure_hunt') {
       return (
         <TreasureHuntMode
-          questions={questions}
-          answers={answers}
-          answerQuestion={answerQuestion}
-          onSubmit={submitEvent}
-          isSubmitting={isSubmitting}
+          eventId={id}
+          forcedEnded={treasureGlobalEnded}
         />
       );
     }

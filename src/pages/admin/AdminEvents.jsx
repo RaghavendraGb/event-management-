@@ -12,16 +12,29 @@ import { AdminStatusPanel } from '../../components/live/AdminStatusPanel';
 
 const INPUT_CLS = "w-full bg-slate-900 border border-white/10 rounded-lg p-3 text-white focus:outline-none focus:border-blue-500 transition-colors";
 
-const TYPE_LABELS = { quiz: 'Standard Quiz', rapid_fire: 'Rapid Fire', treasure_hunt: 'Treasure Hunt', coding_challenge: 'Coding Challenge' };
+const TYPE_LABELS = { quiz: 'Standard Quiz', rapid_fire: 'Rapid Fire', youandme: 'You & Me Duel', treasure_hunt: 'Treasure Hunt', coding_challenge: 'Coding Challenge' };
+const MODE_ZONE_LABELS = {
+  quiz_normal: 'Quiz Normal',
+  quiz_competitive: 'Quiz Competitive',
+  rapid_fire_traditional: 'Rapid Fire Traditional',
+  rapid_fire_knockout: 'Rapid Fire Knockout',
+  youandme: 'You & Me Duel',
+  treasure_hunt: 'Treasure Hunt',
+  coding_challenge: 'Coding Challenge',
+};
 const TYPE_COLORS = {
   quiz:             'color: var(--blue); border-color: rgba(37,99,235,0.25); background: rgba(37,99,235,0.06);',
   rapid_fire:       'color: var(--amber); border-color: rgba(245,158,11,0.25); background: rgba(245,158,11,0.06);',
+  youandme:         'color: #ec4899; border-color: rgba(236,72,153,0.25); background: rgba(236,72,153,0.06);',
   treasure_hunt:    'color: var(--green); border-color: rgba(16,185,129,0.25); background: rgba(16,185,129,0.06);',
   coding_challenge: 'color: #a855f7; border-color: rgba(168,85,247,0.25); background: rgba(168,85,247,0.06);',
 };
 
 const EMPTY_FORM = {
   title: '', description: '', type: 'quiz',
+  quiz_mode: 'normal',
+  rapid_fire_style: 'traditional',
+  youandme_enabled: false,
   start_at: '', end_at: '', max_participants: 100, sponsor_logo_url: '',
   question_count: ''  // Feature 12: UI-only, not sent to DB
 };
@@ -44,6 +57,38 @@ const dayStart = (dateValue) => {
 const dayEnd = (dateValue) => {
   if (!dateValue) return '';
   return new Date(`${dateValue}T23:59:59.999`).toISOString();
+};
+
+const getEventModeKey = (eventLike) => {
+  if (!eventLike) return 'quiz_normal';
+  if (eventLike.type === 'quiz') {
+    return eventLike.quiz_mode === 'competitive' ? 'quiz_competitive' : 'quiz_normal';
+  }
+  if (eventLike.type === 'rapid_fire') {
+    return eventLike.rapid_fire_style === 'knockout_tournament' ? 'rapid_fire_knockout' : 'rapid_fire_traditional';
+  }
+  if (eventLike.type === 'youandme') return 'youandme';
+  if (eventLike.type === 'treasure_hunt') return 'treasure_hunt';
+  if (eventLike.type === 'coding_challenge') return 'coding_challenge';
+  return 'quiz_normal';
+};
+
+const normalizeQuestionTags = (tags) => {
+  if (Array.isArray(tags)) {
+    return tags.map(tag => String(tag || '').trim().toLowerCase()).filter(Boolean);
+  }
+  if (typeof tags === 'string') {
+    return tags
+      .split(',')
+      .map(tag => tag.trim().toLowerCase())
+      .filter(Boolean);
+  }
+  return [];
+};
+
+const isQuestionCompatibleForMode = (question, modeKey) => {
+  const tags = normalizeQuestionTags(question?.tags);
+  return tags.includes('global') || tags.includes(modeKey);
 };
 
 const Label = ({ children }) => (
@@ -92,7 +137,7 @@ export function AdminEvents() {
   const fetchQuestions = useCallback(async () => {
     const { data } = await supabase
       .from('question_bank')
-      .select('id, question, difficulty, correct_answer, options')
+      .select('id, question, difficulty, correct_answer, options, tags')
       .order('created_at', { ascending: false });
     if (data) setQuestions(data);
   }, []);
@@ -127,6 +172,9 @@ export function AdminEvents() {
     const { question_count, ...rest } = formData; // strip UI-only field
     const payload = {
       ...rest,
+      quiz_mode: formData.type === 'quiz' ? formData.quiz_mode : 'normal',
+      rapid_fire_style: formData.type === 'rapid_fire' ? formData.rapid_fire_style : 'traditional',
+      youandme_enabled: formData.type === 'youandme' ? formData.youandme_enabled : false,
       start_at: dayStart(formData.start_at),
       end_at:   dayEnd(formData.end_at || formData.start_at),
       max_participants: Number(formData.max_participants),
@@ -134,7 +182,17 @@ export function AdminEvents() {
     };
     const { data: created, error } = await supabase.from('events')
       .insert([payload]).select().single();
-    if (error) { alert(error.message); return; }
+    if (error) {
+      const msg = String(error.message || 'Create event failed');
+      const enumHint = msg.toLowerCase().includes('event_type') || msg.toLowerCase().includes('enum');
+      const columnHint = msg.toLowerCase().includes('column') || msg.toLowerCase().includes('results_announced');
+      if (enumHint || columnHint) {
+        alert(`${msg}\n\nDatabase compatibility patch required. Run: database/event_mode_compat_patch.sql`);
+      } else {
+        alert(msg);
+      }
+      return;
+    }
     setShowForm(false);
     setFormData(EMPTY_FORM);
     await fetchEvents();
@@ -160,6 +218,9 @@ export function AdminEvents() {
       title:           evt.title,
       description:     evt.description || '',
       type:            evt.type,
+      quiz_mode:       evt.quiz_mode || 'normal',
+      rapid_fire_style: evt.rapid_fire_style || 'traditional',
+      youandme_enabled: evt.type === 'youandme' ? Boolean(evt.youandme_enabled) : false,
       start_at:        evt.start_at ? evt.start_at.slice(0, 10) : '',
       end_at:          evt.end_at   ? evt.end_at.slice(0, 10)   : '',
       max_participants: evt.max_participants || 100,
@@ -172,9 +233,12 @@ export function AdminEvents() {
 
   const handleUpdate = async (e) => {
     e.preventDefault();
-    const { ...rest } = formData;
+    const { question_count: _QUESTION_COUNT, ...rest } = formData;
     const payload = {
       ...rest,
+      quiz_mode: formData.type === 'quiz' ? formData.quiz_mode : 'normal',
+      rapid_fire_style: formData.type === 'rapid_fire' ? formData.rapid_fire_style : 'traditional',
+      youandme_enabled: formData.type === 'youandme',
       start_at: dayStart(formData.start_at),
       end_at:   dayEnd(formData.end_at || formData.start_at),
       max_participants: Number(formData.max_participants)
@@ -182,7 +246,17 @@ export function AdminEvents() {
     const { error } = await supabase.from('events')
       .update(payload)
       .eq('id', editingEvent.id);
-    if (error) { alert(error.message); return; }
+    if (error) {
+      const msg = String(error.message || 'Update event failed');
+      const enumHint = msg.toLowerCase().includes('event_type') || msg.toLowerCase().includes('enum');
+      const columnHint = msg.toLowerCase().includes('column') || msg.toLowerCase().includes('results_announced');
+      if (enumHint || columnHint) {
+        alert(`${msg}\n\nDatabase compatibility patch required. Run: database/event_mode_compat_patch.sql`);
+      } else {
+        alert(msg);
+      }
+      return;
+    }
     setShowForm(false);
     setEditingEvent(null);
     setFormData(EMPTY_FORM);
@@ -248,6 +322,16 @@ export function AdminEvents() {
 
   // ── Question Assignment ────────────────────────────────────
   const toggleQuestion = async (eventId, qId) => {
+    const eventRow = events.find(eventItem => eventItem.id === eventId);
+    const questionRow = questions.find(questionItem => questionItem.id === qId);
+    if (eventRow && questionRow) {
+      const modeKey = getEventModeKey(eventRow);
+      if (!isQuestionCompatibleForMode(questionRow, modeKey)) {
+        alert(`This question is not tagged for ${MODE_ZONE_LABELS[modeKey] || modeKey}.`);
+        return;
+      }
+    }
+
     const current = assignedQMap[eventId] || [];
     const meta    = assignedMetaMap[eventId] || [];
 
@@ -432,15 +516,15 @@ export function AdminEvents() {
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
-          <h1 style={{ fontSize: 28, fontWeight: 800, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Event Master</h1>
-          <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginTop: 4 }}>Manage competition lifecycle, question assignments, and real-time deployments.</p>
+          <h1 style={{ fontSize: 28, fontWeight: 800, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Event Management</h1>
+          <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginTop: 4 }}>Create events, assign questions, start live sessions, and publish results from one place.</p>
         </div>
         <button
           onClick={() => { setEditingEvent(null); setFormData(EMPTY_FORM); setShowForm(f => !f); }}
           className="btn-primary"
           style={{ padding: '12px 24px', background: 'var(--blue)', color: '#000', fontSize: 12 }}
         >
-          <Plus size={16} /> {showForm ? 'Discard Entry' : 'Create Deployment'}
+          <Plus size={16} /> {showForm ? 'Close Form' : 'Create Event'}
         </button>
       </div>
 
@@ -453,7 +537,7 @@ export function AdminEvents() {
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 32 }}>
             <h2 style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              {editingEvent ? `Edit: ${editingEvent.title}` : 'Initialize Deployment'}
+              {editingEvent ? `Edit Event: ${editingEvent.title}` : 'Create New Event'}
             </h2>
             <button type="button" onClick={cancelForm} style={{ color: 'var(--text-muted)', cursor: 'pointer' }} className="hover-white">
               <X size={20} />
@@ -462,7 +546,7 @@ export function AdminEvents() {
 
           <div className="admin-events-form-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 24 }}>
             <div className="span-2-mobile" style={{ gridColumn: 'span 2' }}>
-              <Label>Event Identity</Label>
+              <Label>Event Name</Label>
               <input required type="text"
                 placeholder="e.g. National Hackathon 2026"
                 style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: '12px 16px', color: 'var(--text-primary)', fontWeight: 700 }}
@@ -471,29 +555,73 @@ export function AdminEvents() {
             </div>
 
             <div className="span-2-mobile" style={{ gridColumn: 'span 2' }}>
-              <Label>Description / Rules</Label>
+              <Label>Description And Rules</Label>
               <textarea rows={3}
                 style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: '12px 16px', color: 'var(--text-primary)', fontSize: 14, resize: 'none' }}
-                placeholder="Detail the competition parameters..."
+                placeholder="Write clear instructions for participants..."
                 value={formData.description}
                 onChange={e => setFormData({...formData, description: e.target.value})} />
             </div>
 
+            <div className="span-2-mobile" style={{ gridColumn: 'span 2', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: 12 }}>
+              <p style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                Setup flow: 1) Create event details, 2) Save event, 3) Assign questions from this mode zone only in the Questions panel, 4) Click Go Live when ready.
+              </p>
+            </div>
+
             <div>
-              <Label>Deployment Type</Label>
+              <Label>Event Type</Label>
               <select style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: '12px 16px', color: 'var(--text-primary)', fontWeight: 700 }}
                 value={formData.type}
-                onChange={e => setFormData({...formData, type: e.target.value})}>
+                onChange={e => setFormData({...formData, type: e.target.value, youandme_enabled: e.target.value === 'youandme'})}>
                 <option value="quiz">Standard Quiz</option>
                 <option value="rapid_fire">Rapid Fire</option>
+                <option value="youandme">You & Me Duel</option>
                 <option value="treasure_hunt">Treasure Hunt</option>
                 <option value="coding_challenge">Coding Challenge</option>
               </select>
             </div>
 
+            {formData.type === 'quiz' && (
+              <div>
+                <Label>Quiz Mode</Label>
+                <select
+                  style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: '12px 16px', color: 'var(--text-primary)', fontWeight: 700 }}
+                  value={formData.quiz_mode}
+                  onChange={e => setFormData({ ...formData, quiz_mode: e.target.value })}
+                >
+                  <option value="normal">Normal Quiz</option>
+                  <option value="competitive">Competitive Quiz (Kahoot Style)</option>
+                </select>
+              </div>
+            )}
+
+            {formData.type === 'rapid_fire' && (
+              <div>
+                <Label>Rapid Fire Style</Label>
+                <select
+                  style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: '12px 16px', color: 'var(--text-primary)', fontWeight: 700 }}
+                  value={formData.rapid_fire_style}
+                  onChange={e => setFormData({ ...formData, rapid_fire_style: e.target.value })}
+                >
+                  <option value="traditional">Traditional (Sequential Q&A)</option>
+                  <option value="knockout_tournament">Knockout Tournament (1v1 Bracket)</option>
+                </select>
+              </div>
+            )}
+
+            {formData.type === 'youandme' && (
+              <div>
+                <Label>You And Me Mode</Label>
+                <div style={{ background: 'rgba(236,72,153,0.08)', border: '1px solid rgba(236,72,153,0.25)', borderRadius: 8, padding: '12px 14px' }}>
+                  <p style={{ fontSize: 12, color: '#f9a8d4' }}>This mode is automatically enabled for You & Me events.</p>
+                </div>
+              </div>
+            )}
+
             {!editingEvent && (
               <div>
-                <Label>Question Target <span style={{ color: 'var(--text-muted)', fontWeight: 400, textTransform: 'none' }}>(Guides Selection)</span></Label>
+                <Label>Target Question Count <span style={{ color: 'var(--text-muted)', fontWeight: 400, textTransform: 'none' }}>(Optional)</span></Label>
                 <input type="number" min={1} max={200}
                   style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: '12px 16px', color: 'var(--text-primary)', fontWeight: 700, fontMono: true }}
                   placeholder="e.g. 15"
@@ -503,7 +631,7 @@ export function AdminEvents() {
             )}
 
             <div>
-              <Label>Personnel Capacity</Label>
+              <Label>Max Participants</Label>
               <input type="number" min={1}
                 style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: '12px 16px', color: 'var(--text-primary)', fontWeight: 700, fontMono: true }}
                 value={formData.max_participants}
@@ -511,31 +639,41 @@ export function AdminEvents() {
             </div>
 
             <div>
-              <Label>Deployment Logic</Label>
+              <Label>How This Event Works</Label>
               <p style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                {formData.type === 'quiz'         && 'Discontinuous — manual batch submission.'}
-                {formData.type === 'rapid_fire'   && 'Continuous — high-frequency temporal judgment.'}
-                {formData.type === 'treasure_hunt'&& 'Sequential — locked architectural progression.'}
-                {formData.type === 'coding_challenge' && 'Compiler Verified — judging against hidden matrices.'}
+                {formData.type === 'quiz' && formData.quiz_mode === 'normal' && 'Standard quiz where users answer assigned questions and submit once.'}
+                {formData.type === 'quiz' && formData.quiz_mode === 'competitive' && 'Live synchronized quiz where everyone sees each question at the same time.'}
+                {formData.type === 'rapid_fire' && formData.rapid_fire_style === 'traditional' && 'Fast one-by-one answering with a strict timer.'}
+                {formData.type === 'rapid_fire' && formData.rapid_fire_style === 'knockout_tournament' && 'Bracket-based 1v1 elimination rounds.'}
+                {formData.type === 'youandme' && 'Two-player strategy duel: one selects, the other answers, then swap roles.'}
+                {formData.type === 'treasure_hunt'&& 'Stage-based progression where each step unlocks the next.'}
+                {formData.type === 'coding_challenge' && 'Code submissions evaluated against hidden test cases.'}
               </p>
+              {!editingEvent && (
+                <p style={{ fontSize: 11, color: 'var(--blue)', marginTop: 8 }}>
+                  Mode zone question pool: {
+                    questions.filter(questionItem => isQuestionCompatibleForMode(questionItem, getEventModeKey(formData))).length
+                  } tagged questions.
+                </p>
+              )}
             </div>
 
             <div>
-              <Label>Temporal Start</Label>
+              <Label>Start Date</Label>
               <input required type="date" style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: '12px 16px', color: 'var(--text-primary)', fontWeight: 700 }}
                 value={formData.start_at}
                 onChange={e => setFormData({...formData, start_at: e.target.value})} />
             </div>
 
             <div>
-              <Label>Temporal End <span style={{ color: 'var(--text-muted)', fontWeight: 400, textTransform: 'none' }}>(Optional)</span></Label>
+              <Label>End Date <span style={{ color: 'var(--text-muted)', fontWeight: 400, textTransform: 'none' }}>(Optional)</span></Label>
               <input type="date" style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: '12px 16px', color: 'var(--text-primary)', fontWeight: 700 }}
                 value={formData.end_at}
                 onChange={e => setFormData({...formData, end_at: e.target.value})} />
             </div>
 
             <div className="span-2-mobile" style={{ gridColumn: 'span 2' }}>
-              <Label>Sponsor Signature (Logo URL)</Label>
+              <Label>Sponsor Logo URL</Label>
               <input type="url" style={{ width: '100%', background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: '12px 16px', color: 'var(--text-primary)', fontSize: 13 }}
                 placeholder="https://signature.cdn.com/asset.png"
                 value={formData.sponsor_logo_url}
@@ -543,9 +681,9 @@ export function AdminEvents() {
             </div>
 
             <div className="admin-events-form-actions" style={{ gridColumn: 'span 2', display: 'flex', justifyContent: 'flex-end', gap: 16, borderTop: '1px solid var(--border)', paddingTop: 24, marginTop: 8 }}>
-              <button type="button" onClick={cancelForm} className="btn-ghost" style={{ padding: '10px 24px' }}>Discard</button>
+              <button type="button" onClick={cancelForm} className="btn-ghost" style={{ padding: '10px 24px' }}>Cancel</button>
               <button type="submit" className="btn-primary" style={{ padding: '10px 32px', background: 'var(--green)', color: '#000' }}>
-                {editingEvent ? 'Commit Changes' : 'Initialize Infrastructure'}
+                {editingEvent ? 'Update Event' : 'Save Event'}
               </button>
             </div>
           </div>
@@ -556,7 +694,7 @@ export function AdminEvents() {
       {events.length === 0 ? (
         <div style={{ padding: 128, textAlign: 'center', background: 'var(--surface)', border: '1px solid var(--border)', borderStyle: 'dashed', borderRadius: 16 }}>
           <CalendarClock size={48} style={{ color: 'var(--text-muted)', opacity: 0.2, margin: '0 auto 24px' }} />
-          <p style={{ color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', fontSize: 12 }}>No deployments registered in the architecture.</p>
+          <p style={{ color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', fontSize: 12 }}>No events created yet.</p>
         </div>
       ) : (
         <div style={{ display: 'grid', gap: 20 }}>
@@ -567,10 +705,13 @@ export function AdminEvents() {
             const assignedMeta     = assignedMetaMap[evt.id] || [];
             const guided           = guidedState[evt.id];
             const isGuidedActive   = guided?.active && isExpanded;
+            const modeKey          = getEventModeKey(evt);
+            const scopedQuestions  = questions.filter(q => isQuestionCompatibleForMode(q, modeKey));
 
-            const unassignedQuestions = questions.filter(q => !assigned.includes(q.id));
+            const unassignedQuestions = scopedQuestions.filter(q => !assigned.includes(q.id));
             const guidedQuestionIndex = (guided?.currentStep ?? 1) - 1;
             const guidedQuestion = unassignedQuestions[guidedQuestionIndex] || unassignedQuestions[0] || null;
+            const canGoLive = assigned.length > 0 && (evt.type !== 'youandme' || evt.youandme_enabled);
 
             return (
               <div key={evt.id}
@@ -593,6 +734,24 @@ export function AdminEvents() {
                         <span style={{ fontSize: 9, fontWeight: 800, padding: '2px 8px', borderRadius: 4, border: '1px solid currentColor', textTransform: 'uppercase', letterSpacing: '0.04em', ...parseStyle(TYPE_COLORS[evt.type]) }}>
                           {TYPE_LABELS[evt.type]}
                         </span>
+
+                        {evt.type === 'quiz' && (
+                          <span style={{ fontSize: 9, fontWeight: 800, padding: '2px 8px', borderRadius: 4, border: '1px solid var(--border)', textTransform: 'uppercase', letterSpacing: '0.04em', background: 'var(--elevated)', color: 'var(--text-secondary)' }}>
+                            {evt.quiz_mode === 'competitive' ? 'competitive' : 'normal'}
+                          </span>
+                        )}
+
+                        {evt.type === 'rapid_fire' && (
+                          <span style={{ fontSize: 9, fontWeight: 800, padding: '2px 8px', borderRadius: 4, border: '1px solid var(--border)', textTransform: 'uppercase', letterSpacing: '0.04em', background: evt.rapid_fire_style === 'knockout_tournament' ? 'rgba(217,119,6,0.1)' : 'var(--elevated)', color: evt.rapid_fire_style === 'knockout_tournament' ? '#d97706' : 'var(--text-secondary)' }}>
+                            {evt.rapid_fire_style === 'knockout_tournament' ? 'tournament' : 'traditional'}
+                          </span>
+                        )}
+
+                        {evt.type === 'youandme' && (
+                          <span style={{ fontSize: 9, fontWeight: 800, padding: '2px 8px', borderRadius: 4, border: '1px solid var(--border)', textTransform: 'uppercase', letterSpacing: '0.04em', background: 'rgba(236,72,153,0.1)', color: '#ec4899' }}>
+                            1v1 Duel
+                          </span>
+                        )}
 
                         {evt.status === 'live' && (
                           <span style={{ fontSize: 9, fontWeight: 800, padding: '2px 8px', borderRadius: 4, background: 'rgba(16,185,129,0.1)', color: 'var(--green)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -622,38 +781,50 @@ export function AdminEvents() {
                     {/* Action Buttons */}
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                       {evt.status === 'upcoming' && (
-                        <button onClick={() => initiateStatusChange(evt, 'live')} className="btn-primary" style={{ padding: '8px 16px', background: 'var(--green)', color: '#000', fontSize: 10 }}>
-                          Authorize Live Phase
+                        <button
+                          onClick={() => canGoLive && initiateStatusChange(evt, 'live')}
+                          disabled={!canGoLive}
+                          className="btn-primary"
+                          style={{ padding: '8px 16px', background: 'var(--green)', color: '#000', fontSize: 10, opacity: canGoLive ? 1 : 0.5, cursor: canGoLive ? 'pointer' : 'not-allowed' }}
+                          title={canGoLive ? 'Start this event now' : 'Assign at least one question before going live'}
+                        >
+                          Go Live
                         </button>
                       )}
                       {evt.status === 'live' && (
                         <div style={{ display: 'flex', gap: 8 }}>
                           <button onClick={() => initiateStatusChange(evt, 'announce')} disabled={evt.results_announced} className="btn-primary" style={{ padding: '8px 16px', background: 'var(--amber)', color: '#000', fontSize: 10, opacity: evt.results_announced ? 0.5 : 1 }}>
-                            Announce Winner
+                            Announce Results
                           </button>
                           <button onClick={() => initiateStatusChange(evt, 'ended')} className="btn-primary" style={{ padding: '8px 16px', background: 'var(--red)', color: '#fff', fontSize: 10 }}>
-                            End Session
+                            End Event
                           </button>
                           <button onClick={() => setStatusPanelEventId(p => p === evt.id ? null : evt.id)} className="btn-ghost" style={{ padding: '8px 16px', fontSize: 10, background: statusPanelEventId === evt.id ? 'var(--blue)' : 'var(--elevated)' }}>
-                             Real-time Stats
+                             Live Stats
                           </button>
                         </div>
                       )}
                       
                       <button onClick={() => toggleExpand(evt.id)} className="btn-ghost" style={{ padding: '8px 16px', fontSize: 10, background: isExpanded ? 'var(--blue)' : 'var(--elevated)', color: isExpanded ? '#000' : 'var(--text-primary)' }}>
-                        Question Matrix
+                        Questions
                       </button>
 
                       <div style={{ display: 'flex', gap: 4, marginLeft: 8 }}>
-                        <button onClick={() => openEdit(evt)} className="btn-ghost" style={{ padding: 8, minHeight: 'unset', background: 'var(--elevated)' }} title="Edit Configuration">
+                        <button onClick={() => openEdit(evt)} className="btn-ghost" style={{ padding: 8, minHeight: 'unset', background: 'var(--elevated)' }} title="Edit Event">
                           <Pencil size={14} style={{ color: 'var(--text-muted)' }} />
                         </button>
-                        <button onClick={() => handleDelete(evt.id)} className="btn-ghost" style={{ padding: 8, minHeight: 'unset', background: 'var(--elevated)' }} title="Terminate Deployment">
+                        <button onClick={() => handleDelete(evt.id)} className="btn-ghost" style={{ padding: 8, minHeight: 'unset', background: 'var(--elevated)' }} title="Delete Event">
                           <Trash2 size={14} style={{ color: 'var(--red)' }} />
                         </button>
                       </div>
                     </div>
                   </div>
+
+                  {evt.status === 'upcoming' && !canGoLive && (
+                    <div style={{ marginTop: 4, fontSize: 11, color: 'var(--text-muted)' }}>
+                      To enable Go Live: assign questions first.
+                    </div>
+                  )}
                 </div>
 
                 {/* Status Panel Body */}
@@ -668,10 +839,10 @@ export function AdminEvents() {
                   <div style={{ borderTop: '1px solid var(--border)', background: 'var(--elevated)', padding: 32 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
                       <h4 style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                        Architectural Asset Assignment
+                        Question Assignment
                       </h4>
                       <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                        Protocol: <span style={{ color: 'var(--blue)', fontWeight: 800 }}>{TYPE_LABELS[evt.type]}</span>
+                        Mode Zone: <span style={{ color: 'var(--blue)', fontWeight: 800 }}>{MODE_ZONE_LABELS[modeKey] || TYPE_LABELS[evt.type]}</span>
                       </p>
                     </div>
 
@@ -680,9 +851,9 @@ export function AdminEvents() {
                       <div style={{ marginBottom: 32, padding: 24, background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.2)', borderRadius: 12 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
                           <p style={{ fontSize: 12, fontWeight: 800, color: 'var(--blue)', textTransform: 'uppercase' }}>
-                            Personnel Selection Logic: Asset {guided.currentStep} / {guided.target}
+                            Guided Selection: Question {guided.currentStep} / {guided.target}
                           </p>
-                          <button onClick={() => exitGuidedMode(evt.id)} style={{ fontSize: 9, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', background: 'transparent', border: 'none', cursor: 'pointer' }}>Exit Logic</button>
+                          <button onClick={() => exitGuidedMode(evt.id)} style={{ fontSize: 9, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', background: 'transparent', border: 'none', cursor: 'pointer' }}>Exit Guided Mode</button>
                         </div>
 
                         <div style={{ display: 'flex', gap: 6, marginBottom: 24 }}>
@@ -698,12 +869,12 @@ export function AdminEvents() {
                               <p style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.5 }}>{guidedQuestion.question}</p>
                             </div>
                             <div style={{ display: 'flex', gap: 12 }}>
-                              <button onClick={() => guidedAddQuestion(evt.id, guidedQuestion.id)} className="btn-primary" style={{ flex: 1, padding: '10px', background: 'var(--blue)', color: '#000', fontSize: 11 }}>Authorize Asset</button>
-                              <button onClick={() => guidedSkipQuestion(evt.id)} className="btn-ghost" style={{ flex: 1, padding: '10px', fontSize: 11 }}>Skip Selection</button>
+                              <button onClick={() => guidedAddQuestion(evt.id, guidedQuestion.id)} className="btn-primary" style={{ flex: 1, padding: '10px', background: 'var(--blue)', color: '#000', fontSize: 11 }}>Add Question</button>
+                              <button onClick={() => guidedSkipQuestion(evt.id)} className="btn-ghost" style={{ flex: 1, padding: '10px', fontSize: 11 }}>Skip</button>
                             </div>
                           </div>
                         ) : (
-                          <p style={{ color: 'var(--text-muted)', fontSize: 12, textAlign: 'center' }}>Bank exhausted. No available assets matching parameters.</p>
+                          <p style={{ color: 'var(--text-muted)', fontSize: 12, textAlign: 'center' }}>No unassigned questions left in the question bank.</p>
                         )}
                       </div>
                     )}
@@ -711,7 +882,7 @@ export function AdminEvents() {
                     {/* Matrix List */}
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 32 }}>
                        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                         <label style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Assigned Assets ({assigned.length})</label>
+                         <label style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Assigned Questions ({assigned.length})</label>
                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                            {assignedMeta.map((meta, i) => {
                              const q = questions.find(q => q.id === meta.question_id);
@@ -726,16 +897,16 @@ export function AdminEvents() {
                                </div>
                              );
                            })}
-                           {assigned.length === 0 && <p style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic', padding: 12, background: 'var(--surface)', borderRadius: 8, border: '1px solid var(--border)', textAlign: 'center' }}>Matrix unpopulated.</p>}
+                           {assigned.length === 0 && <p style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic', padding: 12, background: 'var(--surface)', borderRadius: 8, border: '1px solid var(--border)', textAlign: 'center' }}>No questions assigned yet.</p>}
                          </div>
                        </div>
 
                        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                         <label style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Global Asset Bank</label>
+                         <label style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Question Bank - {MODE_ZONE_LABELS[modeKey] || modeKey}</label>
                          {!isGuidedActive && (
                            <div style={{ maxHeight: 320, overflowY: 'auto', paddingRight: 8 }} className="custom-scrollbar">
                              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                               {questions.map(q => {
+                               {scopedQuestions.map(q => {
                                  const isAssigned = assigned.includes(q.id);
                                  return (
                                    <div key={q.id} onClick={() => toggleQuestion(evt.id, q.id)}
@@ -748,11 +919,18 @@ export function AdminEvents() {
                                    </div>
                                  );
                                })}
+                               {scopedQuestions.length === 0 && (
+                                 <div style={{ padding: '12px 14px', background: 'var(--surface)', border: '1px solid var(--border)', borderStyle: 'dashed', borderRadius: 8 }}>
+                                   <p style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.45 }}>
+                                     No questions are tagged for this mode zone. Add tags in Admin Questions for {MODE_ZONE_LABELS[modeKey] || modeKey}.
+                                   </p>
+                                 </div>
+                               )}
                              </div>
                            </div>
                          )}
                          {isGuidedActive && <div style={{ height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, borderStyle: 'dashed' }}>
-                             <p style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Guided Selection Override Active</p>
+                            <p style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Guided Selection Is Active</p>
                            </div>}
                        </div>
                     </div>
@@ -762,8 +940,8 @@ export function AdminEvents() {
                 {/* Hint for coding events */}
                 {isExpanded && evt.type === 'coding_challenge' && (
                   <div style={{ borderTop: '1px solid var(--border)', background: 'var(--elevated)', padding: 48, textAlign: 'center' }}>
-                    <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>Algorithmic configurations are managed in the specialized Coding editor.</p>
-                    <Link to="/admin/coding-problems" style={{ marginTop: 16, display: 'inline-block', fontSize: 11, fontWeight: 800, color: 'var(--blue)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Open Controller Matrix</Link>
+                    <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>Coding challenge question setup is managed from the Coding Problems page.</p>
+                    <Link to="/admin/coding-problems" style={{ marginTop: 16, display: 'inline-block', fontSize: 11, fontWeight: 800, color: 'var(--blue)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Open Coding Problems</Link>
                   </div>
                 )}
               </div>

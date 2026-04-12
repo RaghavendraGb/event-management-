@@ -6,6 +6,7 @@ export function LiveLeaderboard({ eventId, currentUserId, limit = 10, isProjecto
   const [entries, setEntries] = useState([]);
   const [tab, setTab] = useState('solo');
   const [teamsEnabled, setTeamsEnabled] = useState(false);
+  const [eventMeta, setEventMeta] = useState(null);
   // Feature 6: stable mode — 'live' updates instantly; 'stable' snapshots every 2s
   const [mode, setMode] = useState(isProjector ? 'stable' : 'live');
   const stableSnapshotRef = useRef([]);   // last stable snapshot
@@ -16,7 +17,93 @@ export function LiveLeaderboard({ eventId, currentUserId, limit = 10, isProjecto
   const updateThrottleRef = useRef(null);
   const pendingScoreUpdates = useRef({});  // { participationId: newScore }
 
+  useEffect(() => {
+    let alive = true;
+    supabase
+      .from('events')
+      .select('id, type, quiz_mode, rapid_fire_style')
+      .eq('id', eventId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!alive) return;
+        setEventMeta(data || null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [eventId]);
+
   const fetchBoard = useCallback(async () => {
+    if (eventMeta?.type === 'quiz' && eventMeta?.quiz_mode === 'competitive') {
+      const { data: players } = await supabase
+        .from('competitive_quiz_player_state')
+        .select('user_id, total_score, status')
+        .eq('event_id', eventId)
+        .neq('status', 'disqualified')
+        .order('total_score', { ascending: false });
+
+      const playerRows = players || [];
+      const userIds = [...new Set(playerRows.map(p => p.user_id).filter(Boolean))];
+      let userMap = {};
+      if (userIds.length > 0) {
+        const { data: users } = await supabase
+          .from('users')
+          .select('id, name, avatar_url')
+          .in('id', userIds);
+        if (users) users.forEach(u => { userMap[u.id] = u; });
+      }
+
+      const enrichedCompetitive = playerRows.map((p) => ({
+        id: `cq-${p.user_id}`,
+        user_id: p.user_id,
+        team_id: null,
+        score: Number(p.total_score || 0),
+        name: userMap[p.user_id]?.name || 'Participant',
+        avatar: userMap[p.user_id]?.avatar_url || null,
+        teamName: null,
+        isMe: p.user_id === currentUserId,
+      }));
+
+      setTeamsEnabled(false);
+      setEntries(enrichedCompetitive);
+      return;
+    }
+
+    if (eventMeta?.type === 'treasure_hunt') {
+      const { data: players } = await supabase
+        .from('treasure_hunt_player_state')
+        .select('user_id, current_stage, attempts, finish_rank, status')
+        .eq('event_id', eventId);
+
+      const rows = players || [];
+      const userIds = [...new Set(rows.map(p => p.user_id).filter(Boolean))];
+      let userMap = {};
+      if (userIds.length > 0) {
+        const { data: users } = await supabase
+          .from('users')
+          .select('id, name, avatar_url')
+          .in('id', userIds);
+        if (users) users.forEach(u => { userMap[u.id] = u; });
+      }
+
+      const enrichedTreasure = rows
+        .map((p) => ({
+          id: `th-${p.user_id}`,
+          user_id: p.user_id,
+          team_id: null,
+          score: Number((p.finish_rank ? (10000 - Number(p.finish_rank)) : 0) + (Number(p.current_stage || 0) * 100) - Number(p.attempts || 0)),
+          name: userMap[p.user_id]?.name || 'Participant',
+          avatar: userMap[p.user_id]?.avatar_url || null,
+          teamName: null,
+          isMe: p.user_id === currentUserId,
+        }))
+        .sort((a, b) => b.score - a.score);
+
+      setTeamsEnabled(false);
+      setEntries(enrichedTreasure);
+      return;
+    }
+
     const { data: parts } = await supabase
       .from('participation')
       .select('id, user_id, team_id, score, teams(name)')
@@ -49,7 +136,7 @@ export function LiveLeaderboard({ eventId, currentUserId, limit = 10, isProjecto
 
     setEntries(enriched);
     if (enriched.some(e => e.team_id)) setTeamsEnabled(true);
-  }, [eventId, currentUserId]);
+  }, [eventId, currentUserId, eventMeta?.type, eventMeta?.quiz_mode]);
 
   useEffect(() => {
     const initialFetchTimer = setTimeout(() => {
@@ -66,6 +153,14 @@ export function LiveLeaderboard({ eventId, currentUserId, limit = 10, isProjecto
         event: 'UPDATE', schema: 'public', table: 'participation',
         filter: `event_id=eq.${eventId}`
       }, (payload) => {
+        if (eventMeta?.type === 'quiz' && eventMeta?.quiz_mode === 'competitive') {
+          fetchBoard();
+          return;
+        }
+        if (eventMeta?.type === 'treasure_hunt') {
+          fetchBoard();
+          return;
+        }
         const { id: participationId, score } = payload.new;
 
         // Check if we need a full re-hydration (name still placeholder)
@@ -94,6 +189,18 @@ export function LiveLeaderboard({ eventId, currentUserId, limit = 10, isProjecto
         event: 'INSERT', schema: 'public', table: 'participation',
         filter: `event_id=eq.${eventId}`
       }, () => fetchBoard())
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'competitive_quiz_player_state',
+        filter: `event_id=eq.${eventId}`
+      }, () => {
+        if (eventMeta?.type === 'quiz' && eventMeta?.quiz_mode === 'competitive') fetchBoard();
+      })
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'treasure_hunt_player_state',
+        filter: `event_id=eq.${eventId}`
+      }, () => {
+        if (eventMeta?.type === 'treasure_hunt') fetchBoard();
+      })
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
           isRealtimeConnectedRef.current = true;
@@ -123,7 +230,7 @@ export function LiveLeaderboard({ eventId, currentUserId, limit = 10, isProjecto
       if (pollerInterval) clearInterval(pollerInterval);
       if (updateThrottleRef.current) clearTimeout(updateThrottleRef.current);
     };
-  }, [eventId, fetchBoard]);
+  }, [eventId, fetchBoard, eventMeta?.type, eventMeta?.quiz_mode]);
 
   // Feature 6: Stable mode — maintain a snapshot that refreshes every 2 seconds
   useEffect(() => {
