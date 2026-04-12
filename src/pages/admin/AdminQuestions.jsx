@@ -258,6 +258,7 @@ export function AdminQuestions() {
 
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [formData, setFormData]           = useState(EMPTY_FORM);
+  const [selectedQuestionIds, setSelectedQuestionIds] = useState([]);
 
   const fileInputRef = useRef(null);
 
@@ -307,16 +308,13 @@ export function AdminQuestions() {
   });
 
   const modeCardSummaries = MODE_OPTIONS.map(mode => {
-    const count = mode.key === 'global'
-      ? questions.length
-      : questions.filter(q => normalizeModeTags(q.tags).includes(mode.key)).length;
+    const count = questions.filter(q => normalizeModeTags(q.tags).includes(mode.key)).length;
     return { ...mode, count };
   });
 
   const activeModeLabel = modeLabel(activeBankMode || 'global');
   const bankQuestions = activeBankMode
     ? baseFiltered.filter(q => {
-        if (activeBankMode === 'global') return true;
         return normalizeModeTags(q.tags).includes(activeBankMode);
       })
     : [];
@@ -340,6 +338,26 @@ export function AdminQuestions() {
     const tags = normalizeModeTags(q.tags);
     return !tags.includes(selectedModeKey) && !tags.includes('global');
   });
+
+  const toggleQuestionSelection = (qId) => {
+    setSelectedQuestionIds(prev => (
+      prev.includes(qId) ? prev.filter(id => id !== qId) : [...prev, qId]
+    ));
+  };
+
+  const selectAllVisibleBankQuestions = () => {
+    const visibleIds = bankQuestions.map(q => q.id);
+    setSelectedQuestionIds(prev => {
+      const set = new Set(prev);
+      visibleIds.forEach(id => set.add(id));
+      return [...set];
+    });
+  };
+
+  const clearVisibleBankSelection = () => {
+    const visibleIdSet = new Set(bankQuestions.map(q => q.id));
+    setSelectedQuestionIds(prev => prev.filter(id => !visibleIdSet.has(id)));
+  };
 
   // ── Create ─────────────────────────────────────────────────
   const handleCreate = async (e) => {
@@ -453,9 +471,60 @@ export function AdminQuestions() {
   };
 
   // ── Delete ─────────────────────────────────────────────────
+  const applyScopedDelete = async (qId) => {
+    const q = questions.find(item => item.id === qId);
+    if (!q) return { error: null };
+
+    const modeKey = activeBankMode || 'global';
+    const tags = normalizeModeTags(q.tags);
+
+    if (!tags.includes(modeKey)) {
+      return { error: null };
+    }
+
+    const remainingTags = tags.filter(tag => tag !== modeKey);
+    if (remainingTags.length === 0) {
+      return await supabase.from('question_bank').delete().eq('id', qId);
+    }
+
+    return await supabase
+      .from('question_bank')
+      .update({ tags: remainingTags })
+      .eq('id', qId);
+  };
+
   const handleDelete = async (qId) => {
-    if (!confirm('Delete this question from the global bank? It will also be removed from all events.')) return;
-    await supabase.from('question_bank').delete().eq('id', qId);
+    const modeKey = activeBankMode || 'global';
+    if (!confirm(`Delete this question from ${modeLabel(modeKey)} only? Other mode tags will be kept.`)) return;
+    const { error } = await applyScopedDelete(qId);
+    if (error) {
+      alert(error.message);
+      return;
+    }
+    setSelectedQuestionIds(prev => prev.filter(id => id !== qId));
+    fetchData();
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedQuestionIds.length === 0) return;
+    const modeKey = activeBankMode || 'global';
+    const visibleIdSet = new Set(bankQuestions.map(q => q.id));
+    const scopedIds = selectedQuestionIds.filter(id => visibleIdSet.has(id));
+    if (scopedIds.length === 0) {
+      alert('No selected questions in the current mode view.');
+      return;
+    }
+
+    if (!confirm(`Delete ${scopedIds.length} selected questions from ${modeLabel(modeKey)} only? Other mode tags will be kept.`)) return;
+
+    const results = await Promise.all(scopedIds.map(id => applyScopedDelete(id)));
+    const failed = results.filter(r => r?.error);
+    if (failed.length > 0) {
+      alert(`Failed to delete ${failed.length} item(s). Please retry.`);
+      return;
+    }
+
+    setSelectedQuestionIds(prev => prev.filter(id => !visibleIdSet.has(id)));
     fetchData();
   };
 
@@ -639,6 +708,29 @@ export function AdminQuestions() {
             </div>
           )}
 
+          {activeBankMode && (
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '10px 14px' }}>
+              <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Selection: {selectedQuestionIds.length}
+              </span>
+              <button type="button" onClick={selectAllVisibleBankQuestions} className="btn-ghost" style={{ padding: '8px 12px', fontSize: 11 }}>
+                Select Visible ({bankQuestions.length})
+              </button>
+              <button type="button" onClick={clearVisibleBankSelection} className="btn-ghost" style={{ padding: '8px 12px', fontSize: 11 }}>
+                Clear Visible
+              </button>
+              <button
+                type="button"
+                onClick={handleBulkDelete}
+                disabled={selectedQuestionIds.length === 0}
+                className="btn-primary"
+                style={{ padding: '8px 14px', fontSize: 11, background: 'var(--red)', color: '#fff', opacity: selectedQuestionIds.length === 0 ? 0.5 : 1 }}
+              >
+                <Trash2 size={13} /> Delete Selected
+              </button>
+            </div>
+          )}
+
           {!activeBankMode && (
             <div style={{ padding: 44, textAlign: 'center', background: 'var(--surface)', border: '1px dashed var(--border)', borderRadius: 16 }}>
               <p style={{ color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase', fontSize: 12 }}>
@@ -702,6 +794,8 @@ export function AdminQuestions() {
               )}
               {bankQuestions.map((q, idx) => (
                 <QuestionCard key={q.id} q={q} idx={idx}
+                  selected={selectedQuestionIds.includes(q.id)}
+                  onToggleSelect={() => toggleQuestionSelection(q.id)}
                   onEdit={() => openEdit(q)}
                   onView={() => setViewing(q)}
                   onDelete={() => handleDelete(q.id)}
@@ -888,7 +982,7 @@ export function AdminQuestions() {
 }
 
 // ── Question Card ──────────────────────────────────────────
-function QuestionCard({ q, idx, onEdit, onView, onDelete }) {
+function QuestionCard({ q, idx, selected, onToggleSelect, onEdit, onView, onDelete }) {
   const [expanded, setExpanded] = useState(false);
   
   const parseStyle = (str) => {
@@ -904,6 +998,21 @@ function QuestionCard({ q, idx, onEdit, onView, onDelete }) {
   return (
     <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
       <div style={{ padding: 16, display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+        <button
+          type="button"
+          onClick={onToggleSelect}
+          className="btn-ghost"
+          style={{
+            padding: 6,
+            minHeight: 'unset',
+            border: selected ? '1px solid var(--blue)' : '1px solid var(--border)',
+            background: selected ? 'rgba(37,99,235,0.14)' : 'var(--elevated)',
+            color: selected ? 'var(--blue)' : 'var(--text-muted)'
+          }}
+          title={selected ? 'Deselect question' : 'Select question'}
+        >
+          {selected ? <Check size={14} /> : <span style={{ width: 14, height: 14, border: '1px solid var(--border)', borderRadius: 3, display: 'inline-block' }} />}
+        </button>
         <div style={{ width: 32, height: 32, borderRadius: 6, background: 'var(--elevated)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, color: 'var(--text-muted)', shrink: 0 }}>
           {idx + 1}
         </div>
